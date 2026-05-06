@@ -28,6 +28,9 @@ def get_image_files(file_list):
 def _unar():
     return shutil.which('unar')
 
+def _lsar():
+    return shutil.which('lsar')
+
 def _unrar():
     return shutil.which('unrar')
 
@@ -35,23 +38,23 @@ def cbr_tool_available():
     return bool(_unar() or _unrar())
 
 
-# ── CBR via unar ─────────────────────────────────────────────────────────────
+# ── CBR via unar/lsar ────────────────────────────────────────────────────────
 
 def _unar_list(file_path):
-    """Return sorted list of image paths inside a CBR using unar."""
+    """Return sorted list of image paths inside a CBR using lsar."""
+    lsar = _lsar()
+    if not lsar:
+        return []
     result = subprocess.run(
-        [_unar(), '-list', file_path],
+        [lsar, file_path],
         capture_output=True, text=True, timeout=15
     )
     images = []
     for line in result.stdout.splitlines():
-        parts = line.split()
-        if not parts:
-            continue
-        fname = parts[-1]
-        if any(fname.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
-            if not os.path.basename(fname).startswith('.'):
-                images.append(fname)
+        line = line.strip()
+        if any(line.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+            if not os.path.basename(line).startswith('.'):
+                images.append(line)
     return sorted(images, key=natural_sort_key)
 
 
