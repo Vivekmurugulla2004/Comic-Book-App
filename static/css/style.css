@@ -94,6 +94,19 @@ h1, h2, h3 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
   transform: translateY(-1px);
   box-shadow: 0 0 24px rgba(247,201,72,0.5);
 }
+.btn-scan-secondary {
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+.btn-scan-secondary:hover {
+  background: var(--card-hover);
+  color: var(--text);
+  border-color: var(--gold);
+  box-shadow: none;
+  transform: none;
+}
 
 /* ── Main ──────────────────────────────────────────────────────────────────── */
 main { max-width: 1320px; margin: 0 auto; padding: 36px 28px 100px; }
