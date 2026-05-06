@@ -1,13 +1,9 @@
 import zipfile
-import io
 import os
 import re
-
-try:
-    import rarfile
-    RAR_SUPPORT = True
-except ImportError:
-    RAR_SUPPORT = False
+import shutil
+import subprocess
+import tempfile
 
 try:
     import fitz  # PyMuPDF
@@ -29,15 +25,92 @@ def get_image_files(file_list):
     return sorted(images, key=natural_sort_key)
 
 
+def _unar():
+    return shutil.which('unar')
+
+def _unrar():
+    return shutil.which('unrar')
+
+def cbr_tool_available():
+    return bool(_unar() or _unrar())
+
+
+# ── CBR via unar ─────────────────────────────────────────────────────────────
+
+def _unar_list(file_path):
+    """Return sorted list of image paths inside a CBR using unar."""
+    result = subprocess.run(
+        [_unar(), '-list', file_path],
+        capture_output=True, text=True, timeout=15
+    )
+    images = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        fname = parts[-1]
+        if any(fname.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+            if not os.path.basename(fname).startswith('.'):
+                images.append(fname)
+    return sorted(images, key=natural_sort_key)
+
+
+def _unar_page(file_path, page_num):
+    """Extract a single page from a CBR using unar."""
+    images = _unar_list(file_path)
+    if page_num >= len(images):
+        return None, None
+    target = images[page_num]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(
+            [_unar(), '-o', tmpdir, '-force-overwrite', file_path, target],
+            capture_output=True, timeout=30
+        )
+        for root, _, files in os.walk(tmpdir):
+            for f in sorted(files):
+                if any(f.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+                    with open(os.path.join(root, f), 'rb') as fp:
+                        return fp.read(), _mime(f)
+    return None, None
+
+
+# ── CBR via rarfile + unrar ───────────────────────────────────────────────────
+
+def _rarfile_page(file_path, page_num):
+    try:
+        import rarfile
+        with rarfile.RarFile(file_path) as r:
+            images = get_image_files(r.namelist())
+            if page_num >= len(images):
+                return None, None
+            return r.read(images[page_num]), _mime(images[page_num])
+    except Exception as e:
+        print(f"rarfile error: {e}")
+        return None, None
+
+
+def _rarfile_count(file_path):
+    try:
+        import rarfile
+        with rarfile.RarFile(file_path) as r:
+            return len(get_image_files(r.namelist()))
+    except Exception:
+        return 0
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
 def get_page_count(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     try:
         if ext == '.cbz':
             with zipfile.ZipFile(file_path) as z:
                 return len(get_image_files(z.namelist()))
-        elif ext == '.cbr' and RAR_SUPPORT:
-            with rarfile.RarFile(file_path) as r:
-                return len(get_image_files(r.namelist()))
+        elif ext == '.cbr':
+            if _unar():
+                return len(_unar_list(file_path))
+            elif _unrar():
+                return _rarfile_count(file_path)
         elif ext == '.pdf' and PDF_SUPPORT:
             doc = fitz.open(file_path)
             count = len(doc)
@@ -57,16 +130,13 @@ def get_page(file_path, page_num):
                 images = get_image_files(z.namelist())
                 if page_num >= len(images):
                     return None, None
-                img_data = z.read(images[page_num])
-                return img_data, _mime(images[page_num])
+                return z.read(images[page_num]), _mime(images[page_num])
 
-        elif ext == '.cbr' and RAR_SUPPORT:
-            with rarfile.RarFile(file_path) as r:
-                images = get_image_files(r.namelist())
-                if page_num >= len(images):
-                    return None, None
-                img_data = r.read(images[page_num])
-                return img_data, _mime(images[page_num])
+        elif ext == '.cbr':
+            if _unar():
+                return _unar_page(file_path, page_num)
+            elif _unrar():
+                return _rarfile_page(file_path, page_num)
 
         elif ext == '.pdf' and PDF_SUPPORT:
             doc = fitz.open(file_path)
@@ -74,8 +144,7 @@ def get_page(file_path, page_num):
                 doc.close()
                 return None, None
             page = doc[page_num]
-            mat = fitz.Matrix(2, 2)
-            pix = page.get_pixmap(matrix=mat)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
             img_data = pix.tobytes('png')
             doc.close()
             return img_data, 'image/png'
