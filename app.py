@@ -10,6 +10,9 @@ COMICS_DIR = os.path.expanduser('~/Downloads/Comics')
 
 SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.pdf'}
 
+COVER_CACHE_DIR = os.path.join(os.path.dirname(__file__), 'static', 'covers')
+os.makedirs(COVER_CACHE_DIR, exist_ok=True)
+
 PLACEHOLDER_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
   <rect width="200" height="300" fill="#1e1e2e"/>
   <rect x="20" y="20" width="160" height="260" fill="none" stroke="#333" stroke-width="2"/>
@@ -85,6 +88,31 @@ def index():
                            unrar_missing=not cbr_tool_available())
 
 
+@app.route('/precache-covers')
+def precache_covers():
+    """Extract and cache every cover that isn't cached yet."""
+    db = get_db()
+    comics = db.execute("SELECT id, file_path FROM comics").fetchall()
+    db.close()
+    done = 0
+    for comic in comics:
+        already = any(
+            os.path.exists(os.path.join(COVER_CACHE_DIR, f"{comic['id']}.{ext}"))
+            for ext in ('jpg', 'png')
+        )
+        if already:
+            continue
+        img_data, mime = get_page(comic['file_path'], 0)
+        if img_data:
+            try:
+                with open(_cover_cache_path(comic['id'], mime), 'wb') as f:
+                    f.write(img_data)
+                done += 1
+            except Exception as e:
+                print(f"Precache failed for {comic['id']}: {e}")
+    return redirect(url_for('index'))
+
+
 @app.route('/scan')
 def scan():
     if not os.path.exists(COMICS_DIR):
@@ -133,8 +161,22 @@ def scan():
 
 # ── Images ───────────────────────────────────────────────────────────────────
 
+def _cover_cache_path(comic_id, mime):
+    ext = 'png' if mime == 'image/png' else 'jpg'
+    return os.path.join(COVER_CACHE_DIR, f'{comic_id}.{ext}')
+
+
 @app.route('/cover/<int:comic_id>')
 def serve_cover(comic_id):
+    # Serve from disk cache if available
+    for ext, mime in (('jpg', 'image/jpeg'), ('png', 'image/png')):
+        path = os.path.join(COVER_CACHE_DIR, f'{comic_id}.{ext}')
+        if os.path.exists(path):
+            with open(path, 'rb') as f:
+                resp = Response(f.read(), mimetype=mime)
+                resp.headers['Cache-Control'] = 'public, max-age=86400'
+                return resp
+
     db = get_db()
     row = db.execute("SELECT file_path FROM comics WHERE id = ?", (comic_id,)).fetchone()
     db.close()
@@ -143,8 +185,16 @@ def serve_cover(comic_id):
     img_data, mime = get_page(row['file_path'], 0)
     if not img_data:
         return Response(PLACEHOLDER_SVG, mimetype='image/svg+xml')
+
+    # Write to disk cache for next time
+    try:
+        with open(_cover_cache_path(comic_id, mime), 'wb') as f:
+            f.write(img_data)
+    except Exception as e:
+        print(f"Cover cache write failed for {comic_id}: {e}")
+
     resp = Response(img_data, mimetype=mime)
-    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
     return resp
 
 

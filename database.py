@@ -21,6 +21,10 @@ def migrate_db():
         """CREATE TABLE IF NOT EXISTS favorites (
                comic_id INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE
            )""",
+        "CREATE INDEX IF NOT EXISTS idx_comics_publisher ON comics(publisher)",
+        "CREATE INDEX IF NOT EXISTS idx_comics_series ON comics(series)",
+        "CREATE INDEX IF NOT EXISTS idx_run_items_run_id ON run_items(run_id, position)",
+        "CREATE INDEX IF NOT EXISTS idx_reading_progress ON reading_progress(comic_id)",
     ]:
         try:
             conn.execute(sql)
