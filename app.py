@@ -21,9 +21,19 @@ def extract_metadata(file_path):
     rel = os.path.relpath(file_path, COMICS_DIR)
     parts = rel.split(os.sep)
     publisher = parts[0] if len(parts) > 1 else 'Unknown'
-    series = parts[1] if len(parts) > 2 else 'General'
     filename = parts[-1]
     title = os.path.splitext(filename)[0]
+
+    # Everything between publisher and filename becomes the series.
+    # e.g. Marvel/Spider-Man/Classic/file.cbr → "Spider-Man — Classic"
+    intermediate = parts[1:-1]
+    if not intermediate:
+        series = 'General'
+    elif len(intermediate) == 1:
+        series = intermediate[0]
+    else:
+        series = ' — '.join(intermediate)
+
     match = re.search(r'(?:v|vol|volume|#|issue)[\s.]?(\d+)', title, re.IGNORECASE)
     issue_number = match.group(1) if match else None
     return {'publisher': publisher, 'series': series, 'title': title, 'issue_number': issue_number}
@@ -91,16 +101,25 @@ def scan():
                 continue
             file_path = os.path.join(root, filename)
             meta = extract_metadata(file_path)
-            page_count = get_page_count(file_path)
             try:
-                db.execute(
-                    """INSERT OR IGNORE INTO comics
-                       (title, file_path, publisher, series, issue_number, page_count)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (meta['title'], file_path, meta['publisher'],
-                     meta['series'], meta['issue_number'], page_count)
-                )
-                if db.execute("SELECT changes()").fetchone()[0]:
+                existing = db.execute(
+                    "SELECT id FROM comics WHERE file_path = ?", (file_path,)
+                ).fetchone()
+                if existing:
+                    db.execute(
+                        """UPDATE comics SET publisher=?, series=?, issue_number=?
+                           WHERE file_path=?""",
+                        (meta['publisher'], meta['series'], meta['issue_number'], file_path)
+                    )
+                else:
+                    page_count = get_page_count(file_path)
+                    db.execute(
+                        """INSERT INTO comics
+                           (title, file_path, publisher, series, issue_number, page_count)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (meta['title'], file_path, meta['publisher'],
+                         meta['series'], meta['issue_number'], page_count)
+                    )
                     added += 1
             except Exception as e:
                 print(f"Error adding {filename}: {e}")
