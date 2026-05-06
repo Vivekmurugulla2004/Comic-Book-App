@@ -1,16 +1,13 @@
 import os
 import re
-import shutil
 from flask import Flask, render_template, redirect, url_for, request, jsonify, Response, abort
 from database import get_db, init_db
-from comic_reader import get_page, get_page_count
+from comic_reader import get_page, get_page_count, cbr_tool_available
 
 app = Flask(__name__)
 
 COMICS_DIR = os.path.expanduser('~/Downloads/Comics')
 
-def unrar_installed():
-    return shutil.which('unrar') is not None
 SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.pdf'}
 
 PLACEHOLDER_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
@@ -73,7 +70,7 @@ def index():
                            current_publisher=publisher_filter,
                            search=search,
                            total=total,
-                           unrar_missing=not unrar_installed())
+                           unrar_missing=not cbr_tool_available())
 
 
 @app.route('/scan')
