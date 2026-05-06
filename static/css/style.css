@@ -572,6 +572,67 @@ main { max-width: 1320px; margin: 0 auto; padding: 36px 28px 100px; }
 
 .results-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 20px 0; }
 
+/* ── Run Progress ──────────────────────────────────────────────────────────── */
+.run-progress-wrap { display: flex; align-items: center; gap: 8px; }
+.run-progress-bar {
+  width: 80px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.run-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold2));
+  border-radius: 4px;
+}
+.run-progress-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.run-stars { color: var(--gold); font-size: 13px; letter-spacing: 1px; }
+
+/* ── Run Rating (detail page) ──────────────────────────────────────────────── */
+.run-rate-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+#run-star-picker { display: flex; gap: 4px; }
+.run-star {
+  font-size: 22px;
+  color: var(--border);
+  cursor: pointer;
+  transition: color 0.1s, transform 0.1s;
+}
+.run-star:hover, .run-star.active { color: var(--gold); transform: scale(1.15); }
+.run-review-text { font-size: 12px; color: var(--muted); font-style: italic; max-width: 200px; text-align: right; }
+
+/* ── Buy Link ──────────────────────────────────────────────────────────────── */
+.buy-link-btn {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 7px 16px;
+  background: rgba(247,201,72,0.1);
+  border: 1px solid rgba(247,201,72,0.3);
+  color: var(--gold);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.buy-link-btn:hover { background: rgba(247,201,72,0.2); border-color: var(--gold); }
+
+/* ── Issue Notes ───────────────────────────────────────────────────────────── */
+.issue-note {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 0;
+  margin-top: 5px;
+  outline: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.issue-note:focus { border-bottom-color: var(--gold); color: var(--text); }
+.issue-note::placeholder { color: var(--border); }
+
 /* ── Form Page ─────────────────────────────────────────────────────────────── */
 .form-page { max-width: 560px; }
 .form-page h1 { font-size: 48px; margin-bottom: 6px; }

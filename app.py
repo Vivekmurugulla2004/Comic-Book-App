@@ -1,7 +1,7 @@
 import os
 import re
 from flask import Flask, render_template, redirect, url_for, request, jsonify, Response, abort
-from database import get_db, init_db
+from database import get_db, init_db, migrate_db
 from comic_reader import get_page, get_page_count, cbr_tool_available
 
 app = Flask(__name__)
@@ -243,9 +243,13 @@ def rate_comic(comic_id):
 def runs():
     db = get_db()
     runs_list = db.execute("""
-        SELECT r.*, COUNT(ri.id) as comic_count
+        SELECT r.*,
+               COUNT(ri.id) as comic_count,
+               COUNT(CASE WHEN rp.current_page >= c.page_count - 2 AND c.page_count > 1 THEN 1 END) as read_count
         FROM runs r
         LEFT JOIN run_items ri ON r.id = ri.run_id
+        LEFT JOIN comics c ON ri.comic_id = c.id
+        LEFT JOIN reading_progress rp ON c.id = rp.comic_id
         GROUP BY r.id
         ORDER BY r.created_at DESC
     """).fetchall()
@@ -260,8 +264,9 @@ def new_run():
         description = request.form.get('description', '').strip()
         if not title:
             return render_template('new_run.html', error='A title is required.')
+        buy_link = request.form.get('buy_link', '').strip()
         db = get_db()
-        cur = db.execute("INSERT INTO runs (title, description) VALUES (?, ?)", (title, description))
+        cur = db.execute("INSERT INTO runs (title, description, buy_link) VALUES (?, ?, ?)", (title, description, buy_link or None))
         run_id = cur.lastrowid
         db.commit()
         db.close()
@@ -343,6 +348,30 @@ def move_item(run_id, item_id, direction):
     return redirect(url_for('run_detail', run_id=run_id))
 
 
+@app.route('/api/rate-run/<int:run_id>', methods=['POST'])
+def rate_run(run_id):
+    data = request.get_json()
+    rating = data.get('rating')
+    review = data.get('review', '')
+    if not rating or not (1 <= int(rating) <= 5):
+        return jsonify({'error': 'Invalid rating'}), 400
+    db = get_db()
+    db.execute("UPDATE runs SET rating = ?, review = ? WHERE id = ?", (rating, review, run_id))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/note/<int:item_id>', methods=['POST'])
+def save_note(item_id):
+    note = request.get_json().get('note', '')
+    db = get_db()
+    db.execute("UPDATE run_items SET notes = ? WHERE id = ?", (note or None, item_id))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
 @app.route('/runs/<int:run_id>/delete', methods=['POST'])
 def delete_run(run_id):
     db = get_db()
@@ -354,4 +383,5 @@ def delete_run(run_id):
 
 if __name__ == '__main__':
     init_db()
+    migrate_db()
     app.run(debug=True, port=5001)

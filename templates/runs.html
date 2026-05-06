@@ -29,7 +29,17 @@
     </div>
     <div class="run-card-meta">
       <span class="run-count">{{ run.comic_count }} comic{% if run.comic_count != 1 %}s{% endif %}</span>
-      <span class="run-date">{{ run.created_at[:10] }}</span>
+      {% if run.comic_count > 0 %}
+      <div class="run-progress-wrap">
+        <div class="run-progress-bar">
+          <div class="run-progress-fill" style="width: {{ ((run.read_count or 0) / run.comic_count * 100)|int }}%"></div>
+        </div>
+        <span class="run-progress-label">{{ run.read_count or 0 }}/{{ run.comic_count }} read</span>
+      </div>
+      {% endif %}
+      {% if run.rating %}
+      <span class="run-stars">{% for i in range(run.rating) %}★{% endfor %}</span>
+      {% endif %}
       <span class="run-arrow">→</span>
     </div>
   </a>
