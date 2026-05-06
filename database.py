@@ -11,6 +11,22 @@ def get_db():
     return conn
 
 
+def migrate_db():
+    """Add new columns to existing databases without losing data."""
+    conn = get_db()
+    for sql in [
+        "ALTER TABLE runs ADD COLUMN rating INTEGER",
+        "ALTER TABLE runs ADD COLUMN review TEXT",
+        "ALTER TABLE runs ADD COLUMN buy_link TEXT",
+    ]:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass  # column already exists
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     conn = get_db()
     conn.executescript("""
