@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Edit — {{ comic.title }} — ComicArc{% endblock %}
+
+{% block content %}
+<div class="form-page">
+  <a href="/comic/{{ comic.id }}" class="back-crumb">← {{ comic.title }}</a>
+  <h1>Edit Comic</h1>
+
+  {% if error %}
+  <div class="form-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/comic/{{ comic.id }}/edit" class="run-form">
+    <label for="title">Title</label>
+    <input id="title" type="text" name="title" value="{{ comic.title }}" required autofocus>
+
+    <label for="series">Series <span class="optional">(optional)</span></label>
+    <input id="series" type="text" name="series" value="{{ comic.series if comic.series != 'General' else '' }}"
+           placeholder="e.g. The Amazing Spider-Man">
+
+    <label for="publisher">Publisher <span class="optional">(optional)</span></label>
+    <input id="publisher" type="text" name="publisher"
+           value="{{ comic.publisher if comic.publisher != 'Unknown' else '' }}"
+           placeholder="e.g. Marvel, DC, Image…">
+
+    <label for="issue_number">Issue Number <span class="optional">(optional)</span></label>
+    <input id="issue_number" type="text" name="issue_number" value="{{ comic.issue_number or '' }}"
+           placeholder="e.g. 42">
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Save</button>
+      <a href="/comic/{{ comic.id }}" class="btn-ghost">Cancel</a>
+    </div>
+  </form>
+
+  <div class="danger-zone">
+    <h3>Danger Zone</h3>
+    <p>Permanently removes this comic from your library.
+       {% if comic.file_path.startswith('/') %}The source file will also be deleted if it was imported through ComicArc.{% endif %}
+    </p>
+    <form method="post" action="/comic/{{ comic.id }}/delete"
+          onsubmit="return confirm('Delete {{ comic.title }}? This cannot be undone.')">
+      <button type="submit" class="btn-danger">Delete Comic</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

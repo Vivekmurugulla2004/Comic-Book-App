@@ -11,6 +11,21 @@ function initReader(id, page, total) {
   // Hide keyboard hint after 4s
   setTimeout(() => document.getElementById('kb-hint').classList.add('hidden'), 4000);
 
+  // Touch swipe navigation
+  let touchStartX = 0, touchStartY = 0;
+  const pageArea = document.getElementById('page-area');
+  pageArea.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].clientX;
+    touchStartY = e.changedTouches[0].clientY;
+  }, { passive: true });
+  pageArea.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+      dx < 0 ? nextPage() : prevPage();
+    }
+  }, { passive: true });
+
   // Keyboard navigation
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextPage(); }

@@ -1165,3 +1165,152 @@ main { max-width: 1320px; margin: 0 auto; padding: 36px 28px 100px; }
   transition: all 0.15s;
 }
 .cd-run-chip:hover { background: rgba(247,201,72,0.18); border-color: var(--gold); }
+
+/* ── Danger Zone (edit comic) ──────────────────────────────────────────────── */
+.danger-zone {
+  margin-top: 48px;
+  padding: 20px 22px;
+  border: 1px solid rgba(239,35,60,0.25);
+  border-radius: var(--radius);
+  background: rgba(239,35,60,0.04);
+}
+.danger-zone h3 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 18px;
+  color: var(--red2);
+  margin-bottom: 6px;
+}
+.danger-zone p { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+
+/* ── Import Zone ───────────────────────────────────────────────────────────── */
+.import-zone { margin-bottom: 28px; }
+.import-drop {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+  cursor: default;
+}
+.import-drop.dragging {
+  border-color: var(--gold);
+  background: rgba(247,201,72,0.06);
+}
+.import-icon { font-size: 22px; color: var(--muted); flex-shrink: 0; }
+.import-text { font-size: 13px; color: var(--muted); flex: 1; }
+.import-browse-btn { font-size: 12px; padding: 7px 16px; cursor: pointer; flex-shrink: 0; }
+
+.import-queue {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.import-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  gap: 12px;
+}
+.import-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.import-item-status { flex-shrink: 0; color: var(--muted); }
+.import-item-status.ok  { color: #4caf50; }
+.import-item-status.err { color: var(--red2); }
+
+/* ── Accessibility — visible focus ────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Mobile — Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  :root { --nav-h: auto; }
+
+  .navbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 16px;
+    gap: 10px;
+  }
+  .nav-links { order: 3; width: 100%; gap: 4px; }
+  .nav-link  { padding: 6px 10px; font-size: 12px; }
+  .btn-scan-secondary { display: none; }
+  .btn-scan  { margin-left: auto; padding: 7px 14px; font-size: 12px; }
+
+  main { padding: 24px 16px 80px; }
+
+  /* Library */
+  .library-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .search-form    { width: 100%; }
+  .search-input   { flex: 1; min-width: 0; }
+  .comics-grid    { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+
+  /* Import zone — stack on mobile */
+  .import-drop { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+  .import-text { width: 100%; }
+
+  /* Continue reading */
+  .continue-card { width: 95px; }
+
+  /* Page header */
+  .page-header { flex-direction: column; gap: 12px; }
+  .page-header h1 { font-size: 36px; }
+  .header-actions { flex-wrap: wrap; gap: 8px; }
+
+  /* Comic detail */
+  .comic-detail-page { flex-direction: column; gap: 24px; }
+  .cd-cover-col { width: 160px; align-self: center; }
+  .cd-series { margin-top: 0; }
+  .cd-title  { font-size: 38px; }
+
+  /* Runs list */
+  .run-card { padding: 16px 18px; flex-wrap: wrap; gap: 12px; }
+  .run-card-meta { flex-wrap: wrap; gap: 10px; }
+
+  /* Stats */
+  .stat-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat-num  { font-size: 36px; }
+  .stat-card { padding: 16px 12px; }
+  .stats-two-col { grid-template-columns: 1fr; }
+
+  /* Reader topbar */
+  #spread-btn { display: none; }
+  .reader-title { max-width: 130px; font-size: 12px; }
+  .run-nav-preview { display: none; }
+}
+
+@media (max-width: 480px) {
+  .comics-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+  .stat-grid   { grid-template-columns: repeat(2, 1fr); }
+  .stat-num    { font-size: 28px; }
+
+  .cd-cover-col { width: 130px; }
+  .cd-title     { font-size: 30px; }
+  .cd-stars .cd-star { font-size: 22px; }
+
+  .publisher-tabs { gap: 6px; }
+  .tab { padding: 5px 14px; font-size: 12px; }
+
+  /* Reader bottom bar */
+  #reader-bottombar { padding: 0 10px; gap: 6px; }
+  .run-nav-btn { font-size: 11px; padding: 5px 8px; }
+
+  /* Form page */
+  .form-page { max-width: 100%; }
+}
+
+/* Reader touch improvements */
+@media (hover: none) {
+  #prev-zone, #next-zone { opacity: 0.01; }
+  .cover-overlay { opacity: 0; }
+}
