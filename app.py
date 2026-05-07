@@ -1,6 +1,8 @@
 import os
 import re
+import time
 from flask import Flask, render_template, redirect, url_for, request, jsonify, Response, abort
+from werkzeug.utils import secure_filename
 from database import get_db, init_db, migrate_db
 from comic_reader import get_page, get_page_count, cbr_tool_available
 
@@ -13,11 +15,29 @@ SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.pdf'}
 COVER_CACHE_DIR = os.path.join(os.path.dirname(__file__), 'static', 'covers')
 os.makedirs(COVER_CACHE_DIR, exist_ok=True)
 
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'user_comics')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024  # 5 GB
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    return jsonify({'ok': False, 'error': 'File too large'}), 413
+
 PLACEHOLDER_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
   <rect width="200" height="300" fill="#1e1e2e"/>
   <rect x="20" y="20" width="160" height="260" fill="none" stroke="#333" stroke-width="2"/>
   <text x="100" y="155" text-anchor="middle" fill="#444" font-family="sans-serif" font-size="13">No Cover</text>
 </svg>'''
+
+
+def extract_metadata_upload(filename):
+    """Minimal metadata from just a filename (for browser-uploaded files)."""
+    title = os.path.splitext(filename)[0]
+    match = re.search(r'(?:v|vol|volume|#|issue)[\s.]?(\d+)', title, re.IGNORECASE)
+    return {'publisher': 'Unknown', 'series': 'General', 'title': title,
+            'issue_number': match.group(1) if match else None}
 
 
 def extract_metadata(file_path):
@@ -223,6 +243,41 @@ def serve_page(comic_id, page_num):
     return resp
 
 
+# ── Upload ───────────────────────────────────────────────────────────────────
+
+@app.route('/upload', methods=['POST'])
+def upload_comic():
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'ok': False, 'error': 'No file'})
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        return jsonify({'ok': False, 'error': f'Unsupported format: {ext}'})
+    filename = secure_filename(f.filename)
+    save_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(save_path):
+        base, e2 = os.path.splitext(filename)
+        save_path = os.path.join(UPLOAD_DIR, f'{base}_{int(time.time())}{e2}')
+    f.save(save_path)
+    meta = extract_metadata_upload(f.filename)
+    page_count = get_page_count(save_path)
+    db = get_db()
+    try:
+        db.execute(
+            """INSERT OR IGNORE INTO comics
+               (title, file_path, publisher, series, issue_number, page_count)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (meta['title'], save_path, meta['publisher'],
+             meta['series'], meta['issue_number'], page_count)
+        )
+        db.commit()
+    except Exception as ex:
+        db.close()
+        return jsonify({'ok': False, 'error': str(ex)})
+    db.close()
+    return jsonify({'ok': True})
+
+
 # ── Comic Detail ─────────────────────────────────────────────────────────────
 
 @app.route('/comic/<int:comic_id>')
@@ -249,6 +304,51 @@ def comic_detail(comic_id):
     if not comic:
         abort(404)
     return render_template('comic_detail.html', comic=comic, runs_featuring=runs_featuring)
+
+
+@app.route('/comic/<int:comic_id>/edit', methods=['GET', 'POST'])
+def edit_comic(comic_id):
+    db = get_db()
+    comic = db.execute("SELECT * FROM comics WHERE id = ?", (comic_id,)).fetchone()
+    if not comic:
+        abort(404)
+    if request.method == 'POST':
+        title     = request.form.get('title', '').strip()
+        series    = request.form.get('series', '').strip()
+        publisher = request.form.get('publisher', '').strip()
+        issue_num = request.form.get('issue_number', '').strip()
+        if not title:
+            db.close()
+            return render_template('edit_comic.html', comic=comic, error='Title is required.')
+        db.execute(
+            "UPDATE comics SET title=?, series=?, publisher=?, issue_number=? WHERE id=?",
+            (title, series or 'General', publisher or 'Unknown', issue_num or None, comic_id)
+        )
+        db.commit()
+        db.close()
+        return redirect(url_for('comic_detail', comic_id=comic_id))
+    db.close()
+    return render_template('edit_comic.html', comic=comic)
+
+
+@app.route('/comic/<int:comic_id>/delete', methods=['POST'])
+def delete_comic(comic_id):
+    db = get_db()
+    row = db.execute("SELECT file_path FROM comics WHERE id = ?", (comic_id,)).fetchone()
+    db.execute("DELETE FROM comics WHERE id = ?", (comic_id,))
+    db.commit()
+    db.close()
+    for ext in ('jpg', 'png'):
+        cp = os.path.join(COVER_CACHE_DIR, f'{comic_id}.{ext}')
+        if os.path.exists(cp):
+            os.remove(cp)
+    # Only delete file if it lives in the managed upload dir
+    if row and row['file_path'].startswith(UPLOAD_DIR):
+        try:
+            os.remove(row['file_path'])
+        except OSError:
+            pass
+    return redirect(url_for('index'))
 
 
 # ── Reader ───────────────────────────────────────────────────────────────────
