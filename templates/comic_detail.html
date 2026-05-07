@@ -75,6 +75,11 @@
     <!-- Actions -->
     <div class="cd-actions">
       <a href="/reader/{{ comic.id }}" class="btn-primary cd-read-btn">▶ Read</a>
+      <button id="mark-read-btn"
+              class="btn-ghost {% if comic.page_count > 0 and comic.progress >= comic.page_count - 2 %}mark-read-done{% endif %}"
+              onclick="markRead({{ comic.id }}, this)">
+        {% if comic.page_count > 0 and comic.progress >= comic.page_count - 2 %}✓ Read{% else %}Mark as Read{% endif %}
+      </button>
       <a href="/comic/{{ comic.id }}/edit" class="btn-ghost" aria-label="Edit comic metadata">Edit</a>
     </div>
 
@@ -92,7 +97,7 @@
       </div>
       <div class="cd-tag-input-row">
         <input type="text" id="tag-input" class="cd-tag-input"
-               placeholder="Add a tag…" autocomplete="off"
+               placeholder="Add a tag…" autocomplete="off" maxlength="50"
                list="tag-suggestions" aria-label="Add tag">
         <datalist id="tag-suggestions">
           {% for tag in all_tags %}<option value="{{ tag.name }}">{% endfor %}
@@ -147,6 +152,17 @@ function removeTag(comicId, tagId, chip) {
 document.getElementById('tag-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); addTag({{ comic.id }}); }
 });
+
+function markRead(comicId, btn) {
+  fetch(`/api/mark-read/${comicId}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(() => {
+      btn.textContent = '✓ Read';
+      btn.classList.add('mark-read-done');
+      document.querySelector('.cd-progress-label').textContent = 'Read';
+      document.querySelector('.cd-progress-fill').style.width = '100%';
+    });
+}
 
 function rateComic(comicId, val) {
   document.querySelectorAll('.cd-star').forEach((s, i) => {

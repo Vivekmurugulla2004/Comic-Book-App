@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 COMICS_DIR = os.path.expanduser('~/Downloads/Comics')
 
-SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.pdf'}
+SUPPORTED_EXTENSIONS = {'.cbz', '.cbr', '.pdf', '.jpg', '.jpeg', '.png'}
 
 COVER_CACHE_DIR = os.path.join(os.path.dirname(__file__), 'static', 'covers')
 os.makedirs(COVER_CACHE_DIR, exist_ok=True)
@@ -68,7 +68,8 @@ def extract_metadata(file_path):
 def index():
     db = get_db()
     publisher_filter = request.args.get('publisher', 'All')
-    search = request.args.get('q', '').strip()
+    search   = request.args.get('q', '').strip()
+    sort     = request.args.get('sort', 'publisher')
 
     query = """
         SELECT c.*, COALESCE(rp.current_page, 0) as progress,
@@ -82,22 +83,28 @@ def index():
     params = []
     conditions = []
 
+    tag_filter = request.args.get('tag', '').strip()
+
     if publisher_filter != 'All':
         conditions.append("c.publisher = ?")
         params.append(publisher_filter)
     if search:
         conditions.append("(c.title LIKE ? OR c.series LIKE ?)")
         params.extend([f'%{search}%', f'%{search}%'])
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY c.publisher, c.series, c.title"
-
-    tag_filter = request.args.get('tag', '').strip()
     if tag_filter:
         conditions.append("""c.id IN (
             SELECT ct.comic_id FROM comic_tags ct
             JOIN tags t ON ct.tag_id = t.id WHERE t.name = ?)""")
         params.append(tag_filter)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    order = {
+        'title':   "c.title",
+        'added':   "c.added_at DESC",
+        'rating':  "COALESCE(r.rating, 0) DESC, c.title",
+        'progress':"CASE WHEN c.page_count > 0 THEN CAST(rp.current_page AS FLOAT)/c.page_count ELSE 0 END DESC",
+    }.get(sort, "c.publisher, c.series, c.title")
+    query += f" ORDER BY {order}"
 
     comics = db.execute(query, params).fetchall()
     publishers = [r['publisher'] for r in db.execute(
@@ -125,6 +132,7 @@ def index():
                            publishers=publishers,
                            current_publisher=publisher_filter,
                            search=search,
+                           sort=sort,
                            total=total,
                            continuing=continuing,
                            all_tags=all_tags,
@@ -420,27 +428,57 @@ def reader(comic_id):
 
 # ── API ──────────────────────────────────────────────────────────────────────
 
-@app.route('/api/progress/<int:comic_id>', methods=['POST'])
-def save_progress(comic_id):
-    page = request.get_json().get('page', 0)
+@app.route('/api/mark-read/<int:comic_id>', methods=['POST'])
+def mark_read(comic_id):
     db = get_db()
+    page_count = db.execute("SELECT page_count FROM comics WHERE id = ?", (comic_id,)).fetchone()
+    if not page_count:
+        db.close()
+        return jsonify({'error': 'Not found'}), 404
+    last = max(page_count['page_count'] - 1, 0)
     db.execute(
         """INSERT INTO reading_progress (comic_id, current_page, last_read)
            VALUES (?, ?, CURRENT_TIMESTAMP)
            ON CONFLICT(comic_id) DO UPDATE SET current_page = ?, last_read = CURRENT_TIMESTAMP""",
-        (comic_id, page, page)
+        (comic_id, last, last)
     )
     db.commit()
     db.close()
     return jsonify({'ok': True})
 
 
+@app.route('/api/progress/<int:comic_id>', methods=['POST'])
+def save_progress(comic_id):
+    data = request.get_json(silent=True) or {}
+    page = data.get('page', 0)
+    try:
+        page = max(0, int(page))
+    except (TypeError, ValueError):
+        page = 0
+    db = get_db()
+    row = db.execute("SELECT page_count FROM comics WHERE id = ?", (comic_id,)).fetchone()
+    if row:
+        page = min(page, max(row['page_count'] - 1, 0))
+        db.execute(
+            """INSERT INTO reading_progress (comic_id, current_page, last_read)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(comic_id) DO UPDATE SET current_page = ?, last_read = CURRENT_TIMESTAMP""",
+            (comic_id, page, page)
+        )
+        db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
 @app.route('/api/rate/<int:comic_id>', methods=['POST'])
 def rate_comic(comic_id):
-    data = request.get_json()
-    rating = data.get('rating')
+    data = request.get_json(silent=True) or {}
     review = data.get('review', '')
-    if not rating or not (1 <= int(rating) <= 5):
+    try:
+        rating = int(data.get('rating', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid rating'}), 400
+    if not (1 <= rating <= 5):
         return jsonify({'error': 'Invalid rating'}), 400
     db = get_db()
     db.execute(
@@ -639,10 +677,13 @@ def move_item(run_id, item_id, direction):
 
 @app.route('/api/rate-run/<int:run_id>', methods=['POST'])
 def rate_run(run_id):
-    data = request.get_json()
-    rating = data.get('rating')
+    data = request.get_json(silent=True) or {}
     review = data.get('review', '')
-    if not rating or not (1 <= int(rating) <= 5):
+    try:
+        rating = int(data.get('rating', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid rating'}), 400
+    if not (1 <= rating <= 5):
         return jsonify({'error': 'Invalid rating'}), 400
     db = get_db()
     db.execute("UPDATE runs SET rating = ?, review = ? WHERE id = ?", (rating, review, run_id))
@@ -668,7 +709,7 @@ def toggle_favorite(comic_id):
 
 @app.route('/api/note/<int:item_id>', methods=['POST'])
 def save_note(item_id):
-    note = request.get_json().get('note', '')
+    note = (request.get_json(silent=True) or {}).get('note', '')
     db = get_db()
     db.execute("UPDATE run_items SET notes = ? WHERE id = ?", (note or None, item_id))
     db.commit()
@@ -678,7 +719,7 @@ def save_note(item_id):
 
 @app.route('/api/runs/<int:run_id>/reorder', methods=['POST'])
 def reorder_run(run_id):
-    order = request.get_json().get('order', [])
+    order = (request.get_json(silent=True) or {}).get('order', [])
     db = get_db()
     for pos, item_id in enumerate(order, 1):
         db.execute("UPDATE run_items SET position = ? WHERE id = ? AND run_id = ?",
@@ -690,7 +731,7 @@ def reorder_run(run_id):
 
 @app.route('/api/comic/<int:comic_id>/tags', methods=['POST'])
 def add_comic_tag(comic_id):
-    name = request.get_json().get('name', '').strip().lower()
+    name = (request.get_json(silent=True) or {}).get('name', '').strip().lower()
     if not name:
         return jsonify({'error': 'Name required'}), 400
     db = get_db()
@@ -729,4 +770,4 @@ def delete_run(run_id):
 if __name__ == '__main__':
     init_db()
     migrate_db()
-    app.run(debug=True, port=5001)
+    app.run(debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true', port=5001)

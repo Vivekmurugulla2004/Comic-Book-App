@@ -187,6 +187,20 @@ main { max-width: 1320px; margin: 0 auto; padding: 36px 28px 100px; }
 .search-btn:hover { background: var(--card-hover); border-color: var(--gold); color: var(--gold); }
 .clear-btn { color: var(--muted); font-size: 18px; padding: 0 4px; transition: color 0.15s; }
 .clear-btn:hover { color: var(--red); }
+.sort-select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sort-select:focus { border-color: var(--gold); }
+.mark-read-done { color: #4caf50 !important; border-color: #4caf50 !important; }
 
 /* ── Publisher Tabs ────────────────────────────────────────────────────────── */
 .publisher-tabs {
@@ -221,6 +235,9 @@ main { max-width: 1320px; margin: 0 auto; padding: 36px 28px 100px; }
 }
 
 .comic-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
   background: var(--card);
   border-radius: var(--radius);
   overflow: hidden;

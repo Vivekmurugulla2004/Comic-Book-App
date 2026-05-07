@@ -21,7 +21,7 @@
       </div>
       <div class="topbar-right">
         <span id="page-counter">
-          <span id="cur-page">{{ current_page + 1 }}</span> / {{ comic.page_count }}
+          <span id="cur-page">{{ current_page + 1 }}</span> / {% if comic.page_count > 0 %}{{ comic.page_count }}{% else %}?{% endif %}
         </span>
         <button id="vertical-btn" title="Vertical scroll mode (V)" onclick="toggleVertical()">☰</button>
         <button id="spread-btn"   title="Double-page spread (D)"  onclick="toggleSpread()">▭</button>
@@ -62,8 +62,10 @@
       {% endif %}
 
       <div class="bottom-center">
+        {% if comic.page_count > 0 %}
         <input type="range" id="page-slider" min="1" max="{{ comic.page_count }}" value="{{ current_page + 1 }}"
                oninput="jumpToPage(this.value - 1)">
+        {% endif %}
       </div>
 
       {% if run_context and next_comic %}
