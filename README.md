@@ -6,6 +6,12 @@ ComicArc is a local comic library and reader built around how people actually re
 
 ---
 
+## Screenshots
+
+> Coming soon. Run locally: `python app.py`
+
+---
+
 ## What This Is
 
 ComicArc is a **single-user, local-first** app that runs on your own computer and serves only you. It has no accounts system, no multi-user support, no server-side storage, and no way to share files with other people. It organizes and serves comic files that live on your hard drive — it does not host, stream, or distribute content.
@@ -78,7 +84,7 @@ ComicArc is the only local reader with built-in Narrative Runs — cross-series 
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Vivekmurugulla2004/Comic-Book-App.git
+git clone https://github.com/Vivekmurugulla2004/ComicArc.git
 cd comicarc
 
 # 2. Create a virtual environment
