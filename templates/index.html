@@ -17,7 +17,15 @@
   </div>
   <form class="search-form" method="get" action="/">
     <input type="hidden" name="publisher" value="{{ current_publisher }}">
+    <input type="hidden" name="tag" value="{{ tag_filter }}">
     <input class="search-input" type="text" name="q" value="{{ search }}" placeholder="Search titles, series…">
+    <select name="sort" class="sort-select" onchange="this.form.submit()" aria-label="Sort by">
+      <option value="publisher" {% if sort == 'publisher' %}selected{% endif %}>Publisher</option>
+      <option value="title"     {% if sort == 'title'     %}selected{% endif %}>Title A–Z</option>
+      <option value="added"     {% if sort == 'added'     %}selected{% endif %}>Recently Added</option>
+      <option value="rating"    {% if sort == 'rating'    %}selected{% endif %}>Top Rated</option>
+      <option value="progress"  {% if sort == 'progress'  %}selected{% endif %}>Most Read</option>
+    </select>
     <button type="submit" class="search-btn">Search</button>
     {% if search %}<a href="/?publisher={{ current_publisher }}" class="clear-btn">✕</a>{% endif %}
   </form>
@@ -102,7 +110,7 @@
 {% else %}
 <div class="comics-grid">
   {% for comic in comics %}
-  <div class="comic-card" onclick="location.href='/comic/{{ comic.id }}'">
+  <a class="comic-card" href="/comic/{{ comic.id }}">
     <div class="cover-wrap">
       <img class="cover-img" src="/cover/{{ comic.id }}" alt="{{ comic.title }}" loading="lazy">
       {% if comic.page_count > 0 %}
@@ -133,7 +141,7 @@
       </div>
       {% endif %}
     </div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endif %}
