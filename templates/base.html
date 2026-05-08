@@ -31,6 +31,26 @@
     <a href="https://github.com/Vivekmurugulla2004/ComicArc/blob/main/LEGAL.md" target="_blank" rel="noopener">Legal &amp; Content Policy</a>
   </footer>
 
+  <!-- Mobile bottom navigation -->
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <a href="/" class="bnav-item {% if request.endpoint == 'index' %}active{% endif %}">
+      <span class="bnav-icon">◫</span>
+      <span class="bnav-label">Library</span>
+    </a>
+    <a href="/runs" class="bnav-item {% if request.endpoint in ['runs','run_detail','new_run','edit_run'] %}active{% endif %}">
+      <span class="bnav-icon">☰</span>
+      <span class="bnav-label">Runs</span>
+    </a>
+    <a href="/stats" class="bnav-item {% if request.endpoint == 'stats' %}active{% endif %}">
+      <span class="bnav-icon">◈</span>
+      <span class="bnav-label">Stats</span>
+    </a>
+    <a href="/settings" class="bnav-item {% if request.endpoint == 'settings' %}active{% endif %}">
+      <span class="bnav-icon">⚙</span>
+      <span class="bnav-label">Settings</span>
+    </a>
+  </nav>
+
   {% block scripts %}{% endblock %}
   <script>
     // Fade-in all images once loaded

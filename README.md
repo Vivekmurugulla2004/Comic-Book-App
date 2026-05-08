@@ -107,11 +107,14 @@ ComicArc does the same thing for comic files.
 |-----|--------|
 | `←` / `→` | Previous / next page |
 | `Space` | Next page |
+| `Home` | Jump to first page |
+| `End` | Jump to last page |
 | `A` | Toggle autoplay |
 | `V` | Vertical scroll mode |
 | `D` | Double-page spread |
 | `Z` | Zoom |
 | `F` | Fullscreen |
+| `?` | Open keyboard shortcut cheat sheet |
 | `Escape` | Exit zoom / close modal / stop autoplay |
 
 ---

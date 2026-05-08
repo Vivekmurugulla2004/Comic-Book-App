@@ -30,9 +30,13 @@ function initReader(id, page, total) {
     if (e.key === 'v' || e.key === 'V')          toggleVertical();
     if (e.key === 'z' || e.key === 'Z')          setZoom(zoomLevel > 1 ? 1 : 2.5);
     if (e.key === 'a' || e.key === 'A')          toggleAutoplay();
+    if (e.key === 'Home')                        { e.preventDefault(); jumpToPage(0); }
+    if (e.key === 'End')                         { e.preventDefault(); jumpToPage(pageCount - 1); }
+    if (e.key === '?')                           openHelp();
     if (e.key === 'Escape') {
       if (zoomLevel > 1) setZoom(1);
       else if (autoplayMode) toggleAutoplay();
+      else if (!document.getElementById('help-modal').classList.contains('hidden')) closeHelp();
       else closeRating();
     }
   });
@@ -334,6 +338,15 @@ function toggleFullscreen() {
 // ── Rating modal ──────────────────────────────────────────────────────────────
 
 let selectedRating = 0;
+
+function openHelp() {
+  document.getElementById('help-modal').classList.remove('hidden');
+  stopAutoplayTimer();
+}
+function closeHelp() {
+  document.getElementById('help-modal').classList.add('hidden');
+  resetAutoplayTimer();
+}
 
 function openRating() {
   document.getElementById('rating-modal').classList.remove('hidden');

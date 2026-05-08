@@ -29,6 +29,7 @@
         <button id="autoplay-btn"  title="Autoplay — advance page every 10 s (A)" onclick="toggleAutoplay()">▶▶</button>
         <button id="fullscreen-btn" title="Fullscreen (F)"         onclick="toggleFullscreen()">⛶</button>
         <button id="rate-btn"      title="Rate this comic"         onclick="openRating()">★</button>
+        <button id="help-btn"      title="Keyboard shortcuts (?)"  onclick="openHelp()">?</button>
       </div>
     </div>
 
@@ -82,6 +83,42 @@
       {% else %}
       <div></div>
       {% endif %}
+    </div>
+  </div>
+
+  <!-- Keyboard cheat sheet modal -->
+  <div id="help-modal" class="modal hidden" onclick="closeHelp()">
+    <div class="modal-box help-box" onclick="event.stopPropagation()">
+      <h3>Keyboard Shortcuts</h3>
+      <div class="help-grid">
+        <div class="help-section">
+          <div class="help-section-title">Navigation</div>
+          <div class="help-row"><kbd>← →</kbd><span>Previous / Next page</span></div>
+          <div class="help-row"><kbd>Space</kbd><span>Next page</span></div>
+          <div class="help-row"><kbd>Home</kbd><span>First page</span></div>
+          <div class="help-row"><kbd>End</kbd><span>Last page</span></div>
+        </div>
+        <div class="help-section">
+          <div class="help-section-title">View</div>
+          <div class="help-row"><kbd>V</kbd><span>Vertical scroll mode</span></div>
+          <div class="help-row"><kbd>D</kbd><span>Double-page spread</span></div>
+          <div class="help-row"><kbd>Z</kbd><span>Toggle zoom</span></div>
+          <div class="help-row"><kbd>F</kbd><span>Fullscreen</span></div>
+        </div>
+        <div class="help-section">
+          <div class="help-section-title">Playback</div>
+          <div class="help-row"><kbd>A</kbd><span>Toggle autoplay</span></div>
+          <div class="help-row"><kbd>Esc</kbd><span>Exit zoom / close modal</span></div>
+        </div>
+        <div class="help-section">
+          <div class="help-section-title">Touch</div>
+          <div class="help-row"><span class="touch-icon">👆</span><span>Swipe left / right — next / prev</span></div>
+          <div class="help-row"><span class="touch-icon">👆</span><span>Tap left / right edge — prev / next</span></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button onclick="closeHelp()">Close</button>
+      </div>
     </div>
   </div>
 

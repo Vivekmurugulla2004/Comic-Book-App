@@ -39,6 +39,8 @@ First public release.
 - Zoom and pan
 - Autoplay mode — auto-advances pages every 10 seconds with countdown bar (A key)
 - Fullscreen mode (F key)
+- Keyboard cheat sheet modal — press `?` or click the `?` button in the toolbar to see all shortcuts
+- Home / End keys jump to first and last page
 - Default reader mode preference (page / scroll) saved from onboarding/settings
 - Progress saves automatically on each page turn
 - Auto-advance to next comic when a run is active
