@@ -50,7 +50,7 @@
   <div class="settings-card">
     <div class="settings-card-header">
       <h2>CBR Support</h2>
-      <p>CBR files (RAR-based comic archives) require the <code>unar</code> tool. CBZ, PDF, and images always work without it.</p>
+      <p>CBR files (RAR-based comic archives) require the <code>unar</code> tool. CBZ, PDF, and images always work without it. Installing <code>unar</code> requires an internet connection — it's a one-time setup.</p>
     </div>
 
     {% if cbr_ok %}
@@ -67,7 +67,7 @@
     {% if brew_ok %}
     <div class="settings-actions" id="cbr-install-area">
       <button class="btn-primary" id="cbr-install-btn" onclick="installCBR()">Install via Homebrew</button>
-      <span class="settings-hint">Runs <code>brew install unar</code> automatically</span>
+      <span class="settings-hint">Requires internet — runs <code>brew install unar</code> automatically. Takes about a minute.</span>
     </div>
     <div id="cbr-log-wrap" class="cbr-log-wrap hidden">
       <pre id="cbr-log" class="cbr-log"></pre>
@@ -78,7 +78,7 @@
       <button class="btn-ghost" onclick="copyCmd()">Copy Command</button>
       <span class="settings-hint" id="copy-confirm"></span>
     </div>
-    <p class="settings-hint">Install Homebrew first at <strong>brew.sh</strong>, then run the command above.</p>
+    <p class="settings-hint">Homebrew is not installed on this Mac. First install it from <a href="https://brew.sh" target="_blank" rel="noopener" class="settings-link">brew.sh</a> (requires internet), then open Terminal and run the command above.</p>
     {% endif %}
     {% endif %}
   </div>
