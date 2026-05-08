@@ -135,6 +135,9 @@ def index():
           AND (c.page_count = 0 OR rp.current_page < c.page_count - 2)
         ORDER BY rp.last_read DESC LIMIT 5
     """).fetchall()
+    has_cbr = (not cbr_tool_available()) and (
+        db.execute("SELECT 1 FROM comics WHERE file_path LIKE '%.cbr' LIMIT 1").fetchone() is not None
+    )
     db.close()
 
     return render_template('index.html',
@@ -149,7 +152,7 @@ def index():
                            continuing=continuing,
                            all_tags=all_tags,
                            tag_filter=tag_filter,
-                           unrar_missing=not cbr_tool_available(),
+                           unrar_missing=has_cbr,
                            library_path=_comics_dir(),
                            scan_status=get_scan_status())
 
@@ -334,7 +337,12 @@ def delete_comic(comic_id):
 @app.route('/reader/<int:comic_id>')
 def reader(comic_id):
     db = get_db()
-    comic = db.execute("SELECT * FROM comics WHERE id = ?", (comic_id,)).fetchone()
+    comic = db.execute("""
+        SELECT c.*, COALESCE(r.rating, 0) as rating
+        FROM comics c
+        LEFT JOIN ratings r ON c.id = r.comic_id
+        WHERE c.id = ?
+    """, (comic_id,)).fetchone()
     if not comic:
         abort(404)
 
@@ -369,6 +377,7 @@ def reader(comic_id):
     return render_template('reader.html',
                            comic=comic,
                            current_page=current_page,
+                           existing_rating=comic['rating'] or 0,
                            run_context=run_context,
                            prev_comic=prev_comic,
                            next_comic=next_comic,

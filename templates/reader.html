@@ -128,7 +128,7 @@
       <h3>Rate: {{ comic.title }}</h3>
       <div id="star-picker">
         {% for i in range(1, 6) %}
-        <span class="star-pick" data-val="{{ i }}" onclick="selectStar({{ i }})">★</span>
+        <span class="star-pick {% if i <= existing_rating %}selected{% endif %}" data-val="{{ i }}" onclick="selectStar({{ i }})">★</span>
         {% endfor %}
       </div>
       <textarea id="review-text" placeholder="Write a review (optional)…" rows="3"></textarea>
@@ -140,12 +140,13 @@
   </div>
 
   <!-- Keyboard hint -->
-  <div id="kb-hint">← → navigate · A = autoplay · Z = zoom · F = fullscreen</div>
+  <div id="kb-hint">← → to navigate · press ? for all shortcuts</div>
 
   <script src="{{ url_for('static', filename='js/reader.js') }}"></script>
   <script>
     const nextComicUrl = {% if run_context and next_comic %}'{{ "/reader/%d?run_id=%d"|format(next_comic.comic_id, run_id) }}'{% else %}null{% endif %};
     const prevComicUrl = {% if run_context and prev_comic %}'{{ "/reader/%d?run_id=%d&start=last"|format(prev_comic.comic_id, run_id) }}'{% else %}null{% endif %};
+    selectedRating = {{ existing_rating }};
     initReader({{ comic.id }}, {{ current_page }}, {{ comic.page_count }});
     {% if reader_mode == 'scroll' %}toggleVertical();{% endif %}
   </script>

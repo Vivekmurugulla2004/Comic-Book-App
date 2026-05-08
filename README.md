@@ -12,7 +12,7 @@ Organize and read your CBZ, CBR, PDF, and image files from a clean, fast native 
 
 **[→ Download ComicArc v1.0.0](https://github.com/Vivekmurugulla2004/ComicArc/releases/latest)**
 
-Requires macOS 11.0 (Big Sur) or later.
+macOS only — requires macOS 11.0 (Big Sur) or later.
 
 ---
 
