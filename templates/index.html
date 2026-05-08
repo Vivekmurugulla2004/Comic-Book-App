@@ -9,29 +9,32 @@
 </div>
 {% endif %}
 <div class="library-header">
-  <div class="library-title">
-    <h1>Your Library</h1>
-    <span class="comic-count">{{ total }} comics</span>
+  <div class="library-title-row">
+    <h1>Library</h1>
+    <span class="comic-count">{{ total }}</span>
   </div>
-  <form class="search-form" method="get" action="/">
+  <form class="search-form" method="get" action="/" id="search-form">
     <input type="hidden" name="publisher" value="{{ current_publisher }}">
     <input type="hidden" name="tag" value="{{ tag_filter }}">
     {% if view == 'reading-list' %}<input type="hidden" name="view" value="reading-list">{% endif %}
-    <input class="search-input" type="text" name="q" value="{{ search }}" placeholder="Search titles, series…">
-    <select name="sort" class="sort-select" onchange="this.form.submit()" aria-label="Sort by">
-      <option value="publisher" {% if sort == 'publisher' %}selected{% endif %}>Publisher</option>
-      <option value="title"     {% if sort == 'title'     %}selected{% endif %}>Title A–Z</option>
-      <option value="added"     {% if sort == 'added'     %}selected{% endif %}>Recently Added</option>
-      <option value="rating"    {% if sort == 'rating'    %}selected{% endif %}>Top Rated</option>
-      <option value="progress"  {% if sort == 'progress'  %}selected{% endif %}>Most Read</option>
-      <option value="manual"    {% if sort == 'manual'    %}selected{% endif %}>Manual</option>
-    </select>
-    <button type="submit" class="search-btn">Search</button>
-    {% if search %}<a href="/?publisher={{ current_publisher }}" class="clear-btn">✕</a>{% endif %}
+    <div class="search-row">
+      <input class="search-input" type="text" name="q" value="{{ search }}" placeholder="Search…" aria-label="Search comics">
+      {% if search %}<button type="button" class="search-clear" onclick="clearSearch()">✕</button>{% endif %}
+    </div>
+    <div class="search-controls">
+      <select name="sort" class="sort-select" id="sort-select" onchange="this.form.submit()" aria-label="Sort by">
+        <option value="publisher" {% if sort == 'publisher' %}selected{% endif %}>Publisher</option>
+        <option value="title"     {% if sort == 'title'     %}selected{% endif %}>Title A–Z</option>
+        <option value="added"     {% if sort == 'added'     %}selected{% endif %}>Recently Added</option>
+        <option value="rating"    {% if sort == 'rating'    %}selected{% endif %}>Top Rated</option>
+        <option value="progress"  {% if sort == 'progress'  %}selected{% endif %}>Most Read</option>
+        {% if sort == 'manual' %}<option value="manual" selected>Manual Order</option>{% endif %}
+      </select>
+      {% if total > 0 %}
+      <button type="button" id="select-btn" class="btn-ghost select-toggle" onclick="toggleSelectMode()">Select</button>
+      {% endif %}
+    </div>
   </form>
-  {% if total > 0 %}
-  <button id="select-btn" class="btn-ghost select-toggle" onclick="toggleSelectMode()">Select</button>
-  {% endif %}
 </div>
 
 {% if all_tags %}
@@ -63,19 +66,18 @@
 
 <!-- Import zone -->
 <div class="import-zone" id="import-zone" role="region" aria-label="Import comics">
-  <div class="import-drop" id="drop-area">
-    <div class="import-icon" aria-hidden="true">⊕</div>
-    <div class="import-text">Drop CBZ, CBR, PDF, or image files here</div>
-    <label class="btn-ghost import-browse-btn" role="button" tabindex="0">
-      Browse Files
-      <input type="file" id="file-input" multiple accept=".cbz,.cbr,.pdf,.jpg,.jpeg,.png" hidden aria-label="Browse files to import">
+  <div class="import-strip" id="drop-area">
+    <span class="import-strip-icon">⊕</span>
+    <span class="import-strip-text">Drop files here or</span>
+    <label class="import-strip-btn">
+      Browse
+      <input type="file" id="file-input" multiple accept=".cbz,.cbr,.pdf,.jpg,.jpeg,.png" hidden>
     </label>
-    <label class="btn-ghost import-browse-btn" role="button" tabindex="0">
-      Import Folder
-      <input type="file" id="folder-input" webkitdirectory multiple hidden aria-label="Import entire folder">
+    <label class="import-strip-btn">
+      Folder
+      <input type="file" id="folder-input" webkitdirectory multiple hidden>
     </label>
   </div>
-  <p class="import-legal-note">Only import files you have the legal right to possess and read.</p>
   <div id="import-queue" class="import-queue" hidden></div>
 </div>
 
@@ -134,9 +136,8 @@
 {% else %}
 <div class="comics-grid" id="comics-grid">
   {% for comic in comics %}
-  <div class="comic-card" data-id="{{ comic.id }}"
-       {% if sort == 'manual' %}draggable="true"{% endif %}
-       onclick="if(selectMode){toggleCardSelect({{ comic.id }},this)}else if(!this.dataset.dragging){window.location='/comic/{{ comic.id }}'}">
+  <div class="comic-card" data-id="{{ comic.id }}" draggable="true"
+       onclick="if(selectMode){toggleCardSelect({{ comic.id }},this,event)}else if(!this.dataset.dragging){window.location='/comic/{{ comic.id }}'}">
     <div class="cover-wrap">
       <div class="select-check">✓</div>
       <img class="cover-img" src="/cover/{{ comic.id }}" alt="{{ comic.title }}" loading="lazy">
@@ -185,6 +186,7 @@
 <div id="bulk-bar" class="bulk-bar" hidden>
   <span id="bulk-count" class="bulk-count">0 selected</span>
   <div class="bulk-actions">
+    <button class="bulk-action-btn bulk-select-all" onclick="selectAll()">Select All</button>
     <button class="bulk-action-btn" disabled onclick="bulkAction('mark-read')">Mark Read</button>
     <button class="bulk-action-btn" disabled onclick="bulkAction('mark-unread')">Mark Unread</button>
     <button class="bulk-action-btn" disabled onclick="bulkAction('reading-list')">Want to Read</button>
@@ -196,6 +198,13 @@
 
 {% block scripts %}
 <script>
+// ── Search clear ──────────────────────────────────────────────────────────────
+function clearSearch() {
+  const form = document.getElementById('search-form');
+  form.querySelector('[name="q"]').value = '';
+  form.submit();
+}
+
 // ── Scan ─────────────────────────────────────────────────────────────────────
 function triggerScan(btn) {
   btn.textContent = 'Scanning…';
@@ -213,33 +222,53 @@ function triggerScan(btn) {
 
 // ── Select / bulk ─────────────────────────────────────────────────────────────
 let selectMode = false;
+let lastSelectedIdx = -1;
 const selectedIds = new Set();
 
 function toggleSelectMode() {
   selectMode = !selectMode;
   selectedIds.clear();
+  lastSelectedIdx = -1;
   const grid = document.getElementById('comics-grid');
   const btn  = document.getElementById('select-btn');
   if (grid) grid.classList.toggle('select-mode', selectMode);
   if (btn)  btn.classList.toggle('active', selectMode);
   document.querySelectorAll('.comic-card').forEach(c => c.classList.remove('selected'));
-  if (selectMode) {
-    document.querySelectorAll('.comic-card[draggable]').forEach(c => {
-      c.dataset.wasDraggable = '1';
-      c.removeAttribute('draggable');
-    });
+  updateBulkBar();
+}
+
+function toggleCardSelect(id, card, event) {
+  const cards = [...document.querySelectorAll('.comic-card')];
+  const idx = cards.indexOf(card);
+  if (event && event.shiftKey && lastSelectedIdx !== -1) {
+    const lo = Math.min(lastSelectedIdx, idx);
+    const hi = Math.max(lastSelectedIdx, idx);
+    for (let i = lo; i <= hi; i++) {
+      const c = cards[i];
+      selectedIds.add(+c.dataset.id);
+      c.classList.add('selected');
+    }
+    lastSelectedIdx = idx;
   } else {
-    document.querySelectorAll('[data-was-draggable]').forEach(c => {
-      c.setAttribute('draggable', 'true');
-      delete c.dataset.wasDraggable;
-    });
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+      card.classList.remove('selected');
+      lastSelectedIdx = -1;
+    } else {
+      selectedIds.add(id);
+      card.classList.add('selected');
+      lastSelectedIdx = idx;
+    }
   }
   updateBulkBar();
 }
 
-function toggleCardSelect(id, card) {
-  if (selectedIds.has(id)) { selectedIds.delete(id); card.classList.remove('selected'); }
-  else                      { selectedIds.add(id);    card.classList.add('selected'); }
+function selectAll() {
+  document.querySelectorAll('.comic-card').forEach(c => {
+    selectedIds.add(+c.dataset.id);
+    c.classList.add('selected');
+  });
+  lastSelectedIdx = -1;
   updateBulkBar();
 }
 
@@ -248,7 +277,17 @@ function updateBulkBar() {
   const count = selectedIds.size;
   bar.hidden  = !selectMode;
   document.getElementById('bulk-count').textContent = count + ' selected';
-  document.querySelectorAll('.bulk-action-btn').forEach(b => b.disabled = count === 0);
+  const total = document.querySelectorAll('.comic-card').length;
+  document.querySelector('.bulk-select-all').textContent = count === total ? 'Deselect All' : 'Select All';
+  document.querySelector('.bulk-select-all').onclick = count === total ? deselectAll : selectAll;
+  document.querySelectorAll('.bulk-action-btn:not(.bulk-select-all)').forEach(b => b.disabled = count === 0);
+}
+
+function deselectAll() {
+  selectedIds.clear();
+  lastSelectedIdx = -1;
+  document.querySelectorAll('.comic-card').forEach(c => c.classList.remove('selected'));
+  updateBulkBar();
 }
 
 function bulkAction(type) {
@@ -284,12 +323,13 @@ dropArea.addEventListener('drop', e => handleFiles([...e.dataTransfer.files]));
 fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
 document.getElementById('folder-input').addEventListener('change', e => handleFiles([...e.target.files]));
 
-// Manual sort drag-and-drop
-if ('{{ sort }}' === 'manual') {
-  const grid = document.getElementById('comics-grid');
+// ── Drag-to-reorder (always active — auto-snaps to Manual Order) ──────────────
+const grid = document.getElementById('comics-grid');
+if (grid) {
   let dragSrc = null;
-  document.querySelectorAll('.comic-card[draggable]').forEach(card => {
+  function attachDrag(card) {
     card.addEventListener('dragstart', e => {
+      if (selectMode) { e.preventDefault(); return; }
       dragSrc = card;
       card.dataset.dragging = '1';
       e.dataTransfer.effectAllowed = 'move';
@@ -297,7 +337,7 @@ if ('{{ sort }}' === 'manual') {
     });
     card.addEventListener('dragend', () => {
       card.classList.remove('dragging');
-      document.querySelectorAll('.comic-card').forEach(c => c.classList.remove('drag-over'));
+      grid.querySelectorAll('.comic-card').forEach(c => c.classList.remove('drag-over'));
       setTimeout(() => delete card.dataset.dragging, 0);
       const order = [...grid.querySelectorAll('.comic-card')].map(c => +c.dataset.id);
       fetch('/api/library/reorder', {
@@ -305,23 +345,33 @@ if ('{{ sort }}' === 'manual') {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({order})
       });
+      // Auto-snap URL + dropdown to Manual Order
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('sort') !== 'manual') {
+        url.searchParams.set('sort', 'manual');
+        history.replaceState({}, '', url.toString());
+        const sel = document.getElementById('sort-select');
+        if (sel) {
+          let opt = sel.querySelector('option[value="manual"]');
+          if (!opt) { opt = document.createElement('option'); opt.value = 'manual'; sel.appendChild(opt); }
+          opt.textContent = 'Manual Order';
+          sel.value = 'manual';
+        }
+      }
     });
-    card.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    card.addEventListener('dragover',  e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
     card.addEventListener('dragenter', e => { e.preventDefault(); if (card !== dragSrc) card.classList.add('drag-over'); });
     card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
     card.addEventListener('drop', e => {
       e.preventDefault(); e.stopPropagation();
       if (dragSrc && dragSrc !== card) {
         const cards = [...grid.querySelectorAll('.comic-card')];
-        if (cards.indexOf(dragSrc) < cards.indexOf(card)) {
-          grid.insertBefore(dragSrc, card.nextSibling);
-        } else {
-          grid.insertBefore(dragSrc, card);
-        }
+        grid.insertBefore(dragSrc, cards.indexOf(dragSrc) < cards.indexOf(card) ? card.nextSibling : card);
       }
       card.classList.remove('drag-over');
     });
-  });
+  }
+  document.querySelectorAll('.comic-card').forEach(attachDrag);
 }
 
 function handleFiles(files) {
