@@ -16,25 +16,18 @@ Pull requests are welcome. Read this before opening one.
 
 ## Setup
 
-**macOS / Linux:**
 ```bash
 git clone https://github.com/Vivekmurugulla2004/ComicArc.git
 cd ComicArc
-./setup.sh     # creates venv, installs deps
-./run.sh       # starts the server
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
 
-**Windows:**
-```bat
-git clone https://github.com/Vivekmurugulla2004/ComicArc.git
-cd ComicArc
-setup.bat
-run.bat
-```
+**CBR support (optional):** `brew install unar` (macOS), `sudo apt install unar` (Linux).
 
-**Optional — CBR support:** `brew install unar` (macOS), `sudo apt install unar` (Linux), or [7-Zip](https://www.7-zip.org/) in PATH (Windows).
-
-Open [http://localhost:5001](http://localhost:5001).
+To build the macOS .app bundle: `pyinstaller build/ComicArc.spec`
 
 ---
 
@@ -69,12 +62,6 @@ For major changes, open an issue first to discuss what you'd like to change.
 - Multi-user, server, or cloud features
 - DRM-related functionality of any kind
 - Breaking changes to the database schema without a migration
-
----
-
-## Roadmap
-
-See the Roadmap section in [README.md](README.md) for planned features. If you want to work on something from there, open an issue first so we can coordinate.
 
 ---
 
