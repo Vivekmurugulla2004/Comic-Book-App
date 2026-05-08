@@ -7,6 +7,7 @@ let isPanning = false, panStartX, panStartY;
 let autoplayMode     = false;
 let autoplayTimer    = null;
 let progressDebounce = null;
+let isFullscreen     = false;
 
 function initReader(id, page, total) {
   comicId     = id;
@@ -31,7 +32,7 @@ function initReader(id, page, total) {
     if (e.key === 'z' || e.key === 'Z')          setZoom(zoomLevel > 1 ? 1 : 2.5);
     if (e.key === 'a' || e.key === 'A')          toggleAutoplay();
     if (e.key === 'Home')                        { e.preventDefault(); jumpToPage(0); }
-    if (e.key === 'End')                         { e.preventDefault(); jumpToPage(pageCount - 1); }
+    if (e.key === 'End')                         { e.preventDefault(); jumpToPage(totalPages - 1); }
     if (e.key === '?')                           openHelp();
     if (e.key === 'Escape') {
       if (zoomLevel > 1) setZoom(1);
@@ -331,8 +332,20 @@ function applyZoom() {
 // ── Fullscreen ────────────────────────────────────────────────────────────────
 
 function toggleFullscreen() {
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-  else document.exitFullscreen();
+  if (window.pywebview && window.pywebview.api) {
+    window.pywebview.api.toggle_fullscreen();
+    isFullscreen = !isFullscreen;
+  } else {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      isFullscreen = true;
+    } else {
+      document.exitFullscreen();
+      isFullscreen = false;
+    }
+  }
+  const btn = document.getElementById('fullscreen-btn');
+  if (btn) btn.classList.toggle('active', isFullscreen);
 }
 
 // ── Rating modal ──────────────────────────────────────────────────────────────
