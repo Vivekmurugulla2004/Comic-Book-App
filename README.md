@@ -69,6 +69,9 @@ Then right-click → Open again.
 ## Features
 
 ### Library
+
+![Library](assets/screenshots/library.png)
+
 - Drag-and-drop or folder import — CBZ, CBR, PDF, JPG, PNG
 - Grid view with cover thumbnails, progress bars, and star ratings
 - **Continue Reading** shelf on the home page
@@ -79,6 +82,9 @@ Then right-click → Open again.
 - Metadata editor — title, series, publisher, issue number, tags
 
 ### Reader
+
+![Reader](assets/screenshots/reader.png)
+
 - **Page-by-page** mode — click/tap or keyboard to advance
 - **Vertical scroll** mode — continuous strip for manga
 - **Double-page spread** mode
@@ -89,6 +95,9 @@ Then right-click → Open again.
 - Progress saves automatically on every page turn and on close
 
 ### Narrative Runs
+
+![Runs](assets/screenshots/runs.png)
+
 - Build ordered reading paths that span multiple series and publishers — like a playlist for comics
 - Drag-and-drop to reorder issues within a run
 - Per-issue notes, ratings, and favorites inline
@@ -96,6 +105,9 @@ Then right-click → Open again.
 - Auto-advances to the next comic when you finish an issue
 
 ### Stats
+
+![Stats](assets/screenshots/stats.png)
+
 - Total comics, pages read, favorites, in-progress count, run count
 - Publisher breakdown with visual bar chart
 - Top series by issue count
