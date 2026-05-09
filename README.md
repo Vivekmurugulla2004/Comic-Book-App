@@ -10,7 +10,7 @@ Organize and read your CBZ, CBR, PDF, and image files in a clean, fast native ap
 
 **[→ Download ComicArc v1.0.0](https://github.com/Vivekmurugulla2004/ComicArc/releases/latest)**
 
-macOS 11.0 (Big Sur) or later — Apple Silicon and Intel supported.
+macOS 11.0 (Big Sur) or later — Apple Silicon (M1/M2/M3/M4). Intel Mac support via Rosetta 2 -- enable Rosetta in your terminal settings first.
 
 ---
 
