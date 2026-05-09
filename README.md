@@ -4,8 +4,6 @@
 
 Organize and read your CBZ, CBR, PDF, and image files in a clean, fast native app that lives entirely on your machine.
 
-> **Only import files you legally own or have the right to access.** See [LEGAL.md](LEGAL.md) for full details.
-
 ---
 
 ## Download
@@ -13,6 +11,26 @@ Organize and read your CBZ, CBR, PDF, and image files in a clean, fast native ap
 **[→ Download ComicArc v1.0.0](https://github.com/Vivekmurugulla2004/ComicArc/releases/latest)**
 
 macOS 11.0 (Big Sur) or later — Apple Silicon and Intel supported.
+
+---
+
+## FAQ
+
+**Why use this instead of just opening files normally?**
+
+Finder opens files — ComicArc tracks your library. It remembers where you left off in every comic, lets you rate and tag issues, build multi-series reading runs, and see your reading history. No account, no internet, no subscription. Your files stay exactly where they are and are never modified.
+
+**Where do I get comics? Does the app come with any?**
+
+No built-in comics — you bring the files. Legal places to get them:
+
+- **[DriveThruComics](https://www.drivethrucomics.com/)** — DRM-free CBZ/PDF, frequent sales
+- **[Humble Bundle](https://www.humblebundle.com/)** — regular comic bundles as DRM-free files
+- **[ComiXology](https://www.comixology.com/) / Amazon Kindle** — buy issues or collections
+- **Your local library** — free digital comics via [Hoopla](https://www.hoopladigital.com/) or [Libby](https://libbyapp.com/)
+- **[Internet Archive](https://archive.org/details/comics)** — public domain comics, free to download
+
+> Only import files you legally own or have the right to use. See [LEGAL.md](LEGAL.md).
 
 ---
 
@@ -32,13 +50,11 @@ No Python, no Terminal, no configuration files.
 
 Because ComicArc is not from the App Store, macOS will warn you on first launch. This is normal for any independently distributed Mac app.
 
-**The correct way to open it:**
-
 1. Right-click (or Control-click) **ComicArc.app** in Applications
 2. Choose **Open** from the menu
 3. Click **Open** in the dialog
 
-You only need to do this once. After that it opens normally.
+You only need to do this once.
 
 **If you see "ComicArc is damaged and can't be opened"**, run this in Terminal:
 
@@ -46,7 +62,7 @@ You only need to do this once. After that it opens normally.
 xattr -cr /Applications/ComicArc.app
 ```
 
-Then right-click → Open again. This removes a macOS quarantine flag that sometimes sticks when downloading through certain browsers.
+Then right-click → Open again.
 
 ---
 
@@ -90,21 +106,20 @@ Then right-click → Open again. This removes a macOS quarantine flag that somet
 - Switch default reading mode (page-by-page or scroll)
 - **CBR support** — one-click Homebrew install of `unar` right from the Settings page
 - Export full library as a JSON backup — comics, progress, ratings, tags, runs, reading list
-- Reset Setup wizard without losing library data
 - Clear Library — wipes app data, leaves your files untouched
 
 ---
 
 ## Supported Formats
 
-| Format | Support |
-|--------|---------|
+| Format | Notes |
+|--------|-------|
 | `.cbz` | Built-in |
-| `.cbr` | One-time setup in Settings → CBR Support (requires internet to install `unar` via Homebrew) |
+| `.cbr` | One-time setup in Settings → CBR Support |
 | `.pdf` | Built-in |
 | `.jpg` / `.jpeg` / `.png` | Built-in |
 
-CBZ, PDF, and images work immediately with no setup. CBR requires a one-time install of `unar` — you can do it from inside the app.
+CBZ, PDF, and images work immediately. CBR requires a one-time install of `unar` — you can do it from inside the app.
 
 ---
 
@@ -123,16 +138,16 @@ Press `?` in the reader to see these at any time.
 | `Z` | Toggle zoom |
 | `A` | Toggle autoplay |
 | `M` | Show / hide toolbar |
-| `?` | Open keyboard shortcut reference |
+| `?` | Keyboard shortcut reference |
 | `Esc` | Exit zoom / stop autoplay / close modal |
 
-**Touch:** swipe left or right to navigate, or tap the left/right edge of the screen.
+**Touch:** swipe left/right to navigate, or tap the left/right edge of the screen.
 
 ---
 
-## Where Your Data Lives
+## Your Data
 
-Everything is local. Nothing ever leaves your machine.
+Everything stays on your machine. Nothing is uploaded anywhere.
 
 | What | Location |
 |------|----------|
@@ -140,29 +155,13 @@ Everything is local. Nothing ever leaves your machine.
 | Cover thumbnails | `~/Library/Application Support/ComicArc/covers/` |
 | Settings | `~/Library/Application Support/ComicArc/config.json` |
 
-Your original comic files are **never moved, renamed, or modified.** ComicArc reads them in place.
-
----
-
-## Works Offline
-
-ComicArc is fully offline after the initial setup. The only action requiring internet is a one-time install of `unar` for CBR support, which you can skip entirely if you don't have CBR files.
-
----
-
-## What ComicArc Is (and Isn't)
-
-ComicArc is a **single-user, local-first** tool that organizes comic files you already have — the same way Calibre organizes ebooks or Infuse organizes video. It does not download, stream, or distribute content.
-
-This is a personal project. It is not open for contributions. Updates will be released here when ready.
+Your comic files are **never moved, renamed, or modified.**
 
 ---
 
 ## Acknowledgements
 
-ComicArc is built on top of several excellent open-source projects:
-
-- [PyWebView](https://pywebview.flowrl.com/) — native window wrapping the web frontend
+- [PyWebView](https://pywebview.flowrl.com/) — native window
 - [Flask](https://flask.palletsprojects.com/) — local HTTP server
 - [PyMuPDF](https://pymupdf.readthedocs.io/) — PDF rendering
 - [Waitress](https://docs.pylonsproject.org/projects/waitress/) — WSGI server
