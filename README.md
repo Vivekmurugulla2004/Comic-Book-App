@@ -12,9 +12,8 @@ Organize and read your CBZ, CBR, PDF, and image files in a clean, fast native ap
 
 | Platform | File | Requirements |
 |----------|------|--------------|
-| macOS | `ComicArc-v1.0.0-macOS.zip` | macOS 11.0 (Big Sur) or later — Apple Silicon native, Intel via Rosetta 2 |
-| Windows | `ComicArc-v1.0.0-Windows.zip` | Windows 10 or later |
-| Linux | `ComicArc-v1.0.0-Linux.tar.gz` | Ubuntu 20.04+ or equivalent |
+| macOS | `ComicArc-macOS.zip` | macOS 11.0 (Big Sur) or later — Apple Silicon native, Intel via Rosetta 2 |
+| Windows | `ComicArc-Windows.zip` | Windows 10 or later |
 
 ---
 
