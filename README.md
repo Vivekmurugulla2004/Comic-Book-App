@@ -50,11 +50,6 @@ No built-in comics — you bring the files. Legal places to get them:
 2. Run **ComicArc.exe** inside the folder
 3. Follow the setup wizard and done
 
-**Linux**
-1. Download and extract `ComicArc-v1.0.0-Linux.tar.gz`
-2. Run the **ComicArc** binary
-3. Follow the setup wizard and done
-
 No Python, no Terminal, no configuration files.
 
 ---
