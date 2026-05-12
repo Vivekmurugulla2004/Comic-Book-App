@@ -99,7 +99,9 @@ def index():
         pub_params = [publisher_filter] if publisher_filter != 'All' else []
 
         if char_filter:
-            # Drill-down: show series cards for a specific character
+            # Drill-down: show series cards for a specific character.
+            # Match on COALESCE so comics filed directly as Publisher/Robin/file.cbz
+            # (character=None, series='Robin') show up alongside character='Robin' ones.
             rows = db.execute(f"""
                 SELECT c.publisher, c.character, c.series,
                        COUNT(*) as issue_count,
@@ -108,7 +110,7 @@ def index():
                        SUM(CASE WHEN c.page_count > 0 AND rp.current_page >= c.page_count - 1 THEN 1 ELSE 0 END) as completed
                 FROM comics c
                 LEFT JOIN reading_progress rp ON c.id = rp.comic_id
-                WHERE c.character = ? {pub_cond}
+                WHERE COALESCE(c.character, c.series) = ? {pub_cond}
                 GROUP BY c.publisher, c.character, c.series
                 ORDER BY c.series
             """, [char_filter] + pub_params).fetchall()
