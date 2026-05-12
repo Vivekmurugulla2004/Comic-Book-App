@@ -8,22 +8,38 @@ final class LibraryViewModel: ObservableObject {
     @Published var characterGroups: [SeriesGroup] = []
     @Published var seriesGroups: [SeriesGroup] = []
     @Published var publishers: [String] = []
+    @Published var allTags: [Tag] = []
 
     @Published var selectedPublisher: String = "All"
     @Published var searchText: String = ""
+    @Published var selectedTag: String?
     @Published var isImporting = false
+    @Published var importProgress: (done: Int, total: Int) = (0, 0)
     @Published var importError: String?
+
+    /// Set by ReaderView when user taps "Read Next" in a run — observed by RunDetailView
+    @Published var pendingRunComic: Comic?
 
     private let db = DatabaseManager.shared
 
+    // MARK: - Load
+
     func load() {
-        publishers = db.publishers()
-        inProgress = db.inProgress()
-        characterGroups = db.characterGroups(publisher: selectedPublisher == "All" ? nil : selectedPublisher)
-        comics = db.allComics(
-            publisher: selectedPublisher == "All" ? nil : selectedPublisher,
-            search: searchText.isEmpty ? nil : searchText
+        publishers   = db.publishers()
+        inProgress   = db.inProgress()
+        allTags      = db.allTags()
+        characterGroups = db.characterGroups(
+            publisher: selectedPublisher == "All" ? nil : selectedPublisher
         )
+
+        if let tag = selectedTag {
+            comics = db.comics(withTag: tag)
+        } else {
+            comics = db.allComics(
+                publisher: selectedPublisher == "All" ? nil : selectedPublisher,
+                search: searchText.isEmpty ? nil : searchText
+            )
+        }
     }
 
     func loadSeries(for character: String) {
@@ -41,13 +57,25 @@ final class LibraryViewModel: ObservableObject {
         )
     }
 
+    func loadSearchResults() {
+        guard !searchText.isEmpty else { load(); return }
+        comics = db.allComics(search: searchText)
+    }
+
+    // MARK: - Import
+
     func importFiles(_ urls: [URL]) {
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
-            for url in urls {
+            let count = urls.count
+            for (i, url) in urls.enumerated() {
+                await MainActor.run { self.importProgress = (i, count) }
                 await self.importFile(url)
             }
-            await MainActor.run { self.load() }
+            await MainActor.run {
+                self.importProgress = (0, 0)
+                self.load()
+            }
         }
     }
 
@@ -70,7 +98,7 @@ final class LibraryViewModel: ObservableObject {
             }
         }
 
-        let meta = ComicImporter.parse(url: dest)
+        let meta      = ComicImporter.parse(url: dest)
         let pageCount = await ComicImporter.pageCount(url: dest)
         db.insertComic(
             title:       meta.title,
@@ -83,6 +111,8 @@ final class LibraryViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Mutations
+
     func toggleFavorite(_ comic: Comic) {
         db.setFavorite(comic.id, !comic.isFavorite)
         load()
@@ -94,6 +124,13 @@ final class LibraryViewModel: ObservableObject {
     }
 
     func delete(_ comic: Comic) {
+        // Also delete the file from Documents if it lives there
+        let docsPath = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Comics").path
+        if comic.filePath.hasPrefix(docsPath) {
+            try? FileManager.default.removeItem(atPath: comic.filePath)
+        }
         db.deleteComic(comic.id)
         load()
     }

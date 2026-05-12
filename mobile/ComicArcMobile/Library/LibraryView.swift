@@ -7,32 +7,47 @@ struct LibraryView: View {
     @State private var browseMode: BrowseMode = .characters
     @State private var selectedCharacter: SeriesGroup?
     @State private var selectedSeries: SeriesGroup?
-    @State private var detailComicId: Int64?  // push detail sheet
-    @State private var continueComicId: Int64? // direct to reader from Continue shelf
+    @State private var detailComicId: Int64?
+    @State private var continueComicId: Int64?
 
     enum BrowseMode { case characters, flat }
 
     private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
 
+    // True when user is actively searching — bypass the hierarchy
+    private var isSearching: Bool { !library.searchText.isEmpty }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if browseMode == .characters,
-                       selectedCharacter == nil,
-                       !library.inProgress.isEmpty {
-                        continueReadingSection
+                    // Import progress banner
+                    if library.importProgress.total > 0 {
+                        importBanner
                     }
 
-                    if browseMode == .characters {
+                    // Tag filter chips (only in flat / search mode)
+                    if (browseMode == .flat || isSearching) && !library.allTags.isEmpty {
+                        tagFilterRow
+                    }
+
+                    // Search results bypass the hierarchy
+                    if isSearching {
+                        flatGrid
+                    } else if browseMode == .characters {
                         if let series = selectedSeries {
                             issueGrid(series: series)
                         } else if let char = selectedCharacter {
                             seriesGrid(character: char)
                         } else {
+                            // Continue Reading
+                            if !library.inProgress.isEmpty { continueReadingSection }
                             characterGrid
                         }
                     } else {
+                        if !library.inProgress.isEmpty && library.selectedTag == nil {
+                            continueReadingSection
+                        }
                         flatGrid
                     }
                 }
@@ -41,7 +56,13 @@ struct LibraryView: View {
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $library.searchText, prompt: "Search comics")
-            .onChange(of: library.searchText) { _ in library.load() }
+            .onChange(of: library.searchText) { _ in
+                if isSearching {
+                    library.loadSearchResults()
+                } else {
+                    library.load()
+                }
+            }
             .toolbar { toolbarContent }
             .fileImporter(
                 isPresented: $showImporter,
@@ -53,26 +74,79 @@ struct LibraryView: View {
                 if case .success(let urls) = result { library.importFiles(urls) }
             }
             .onAppear { library.load() }
-            // Detail sheet — tapping a comic card
             .sheet(item: Binding(
-                get: { detailComicId.map { AnyID($0) } },
+                get: { detailComicId.map { LibID($0) } },
                 set: { detailComicId = $0?.id }
-            )) { wrapper in
-                ComicDetailView(comicId: wrapper.id)
+            )) { w in
+                ComicDetailView(comicId: w.id)
                     .environmentObject(library)
             }
-            // Direct reader — tapping Continue Reading
             .sheet(item: Binding(
-                get: { continueComicId.map { AnyID($0) } },
+                get: { continueComicId.map { LibID($0) } },
                 set: { continueComicId = $0?.id }
-            )) { wrapper in
-                if let comic = DatabaseManager.shared.comic(id: wrapper.id) {
+            )) { w in
+                if let comic = DatabaseManager.shared.comic(id: w.id) {
                     ReaderView(comic: comic)
                         .environmentObject(library)
                         .onDisappear { library.load() }
                 }
             }
+            .alert("Import Error", isPresented: Binding(
+                get: { library.importError != nil },
+                set: { if !$0 { library.importError = nil } }
+            )) {
+                Button("OK", role: .cancel) { library.importError = nil }
+            } message: {
+                Text(library.importError ?? "")
+            }
         }
+    }
+
+    // MARK: - Import Banner
+
+    private var importBanner: some View {
+        HStack {
+            ProgressView()
+            Text("Importing \(library.importProgress.done + 1) of \(library.importProgress.total)…")
+                .font(.subheadline)
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.top, 8)
+    }
+
+    // MARK: - Tag Filter Row
+
+    private var tagFilterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                tagChip("All", isActive: library.selectedTag == nil) {
+                    library.selectedTag = nil
+                    library.load()
+                }
+                ForEach(library.allTags) { tag in
+                    tagChip(tag.name, isActive: library.selectedTag == tag.name) {
+                        library.selectedTag = (library.selectedTag == tag.name) ? nil : tag.name
+                        library.load()
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func tagChip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.caption)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(isActive ? Color.orange : Color(.secondarySystemBackground))
+                .foregroundStyle(isActive ? .white : .primary)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Toolbar
@@ -80,18 +154,19 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .navigationBarTrailing) {
-            Picker("", selection: $browseMode) {
-                Image(systemName: "square.grid.2x2").tag(BrowseMode.characters)
-                Image(systemName: "list.bullet").tag(BrowseMode.flat)
+            if !isSearching {
+                Picker("", selection: $browseMode) {
+                    Image(systemName: "square.grid.2x2").tag(BrowseMode.characters)
+                    Image(systemName: "list.bullet").tag(BrowseMode.flat)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 80)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 80)
-
             Button { showImporter = true } label: {
                 Image(systemName: "plus")
             }
         }
-        if selectedSeries != nil || selectedCharacter != nil {
+        if !isSearching && (selectedSeries != nil || selectedCharacter != nil) {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
                     withAnimation {
@@ -109,10 +184,7 @@ struct LibraryView: View {
 
     private var continueReadingSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Continue Reading")
-                .font(.headline)
-                .padding(.top, 16)
-
+            Text("Continue Reading").font(.headline).padding(.top, 16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(library.inProgress) { comic in
@@ -168,24 +240,33 @@ struct LibraryView: View {
     }
 
     private var flatGrid: some View {
-        LazyVGrid(columns: columns, spacing: 16) {
-            ForEach(library.comics) { comic in
-                ComicCard(comic: comic)
-                    .onTapGesture { detailComicId = comic.id }
+        Group {
+            if library.comics.isEmpty && !library.searchText.isEmpty {
+                ContentUnavailableView.search(text: library.searchText)
+                    .padding(.top, 60)
+            } else {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(library.comics) { comic in
+                        ComicCard(comic: comic)
+                            .onTapGesture { detailComicId = comic.id }
+                    }
+                }
+                .padding(.top, 8)
             }
         }
-        .padding(.top, 8)
     }
 
     private var navigationTitle: String {
-        if let s = selectedSeries   { return s.groupName }
-        if let c = selectedCharacter { return c.groupName }
+        if isSearching                        { return "Search Results" }
+        if let s = selectedSeries             { return s.groupName }
+        if let c = selectedCharacter          { return c.groupName }
+        if let t = library.selectedTag        { return t }
         return "Library"
     }
 }
 
-// Identifiable wrapper so .sheet(item:) works with Int64
-private struct AnyID: Identifiable {
+// Identifiable wrapper
+private struct LibID: Identifiable {
     let id: Int64
     init(_ id: Int64) { self.id = id }
 }
@@ -208,16 +289,12 @@ struct ContinueCard: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     }
                 }
-
             Text(comic.title)
-                .font(.caption2)
-                .lineLimit(2)
+                .font(.caption2).lineLimit(2)
                 .frame(width: 90, alignment: .leading)
-
             if comic.pageCount > 0 {
                 Text("p.\(comic.progress)/\(comic.pageCount)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.caption2).foregroundStyle(.secondary)
             }
         }
     }
@@ -234,21 +311,16 @@ struct SeriesCard: View {
                 CoverImage(comicId: group.coverComicId)
                     .aspectRatio(2/3, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-
                 if group.isFinished {
                     badge("Done", color: .green)
                 } else if group.isReading {
                     badge("Reading", color: .orange)
                 }
             }
-
             Text(group.groupName)
-                .font(.subheadline).fontWeight(.semibold)
-                .lineLimit(2)
-
+                .font(.subheadline).fontWeight(.semibold).lineLimit(2)
             Text("\(group.issueCount) issue\(group.issueCount == 1 ? "" : "s")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -256,9 +328,7 @@ struct SeriesCard: View {
         Text(label)
             .font(.caption2).fontWeight(.bold)
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color)
-            .foregroundStyle(.white)
-            .clipShape(Capsule())
-            .padding(4)
+            .background(color).foregroundStyle(.white)
+            .clipShape(Capsule()).padding(4)
     }
 }
