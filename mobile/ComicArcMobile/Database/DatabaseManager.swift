@@ -35,27 +35,57 @@ final class DatabaseManager {
     private func migrate() {
         exec("""
         CREATE TABLE IF NOT EXISTS comics (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            title         TEXT NOT NULL,
-            file_path     TEXT NOT NULL UNIQUE,
-            publisher     TEXT DEFAULT 'Unknown',
-            character     TEXT,
-            series        TEXT DEFAULT 'General',
-            issue_number  TEXT,
-            page_count    INTEGER DEFAULT 0,
-            rating        INTEGER DEFAULT 0,
-            is_favorite   INTEGER DEFAULT 0,
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            title           TEXT NOT NULL,
+            file_path       TEXT NOT NULL UNIQUE,
+            publisher       TEXT DEFAULT 'Unknown',
+            character       TEXT,
+            series          TEXT DEFAULT 'General',
+            issue_number    TEXT,
+            page_count      INTEGER DEFAULT 0,
+            rating          INTEGER DEFAULT 0,
+            is_favorite     INTEGER DEFAULT 0,
             in_reading_list INTEGER DEFAULT 0,
-            tags          TEXT DEFAULT '',
-            date_added    TEXT DEFAULT (datetime('now')),
-            sort_order    INTEGER DEFAULT 0
+            date_added      TEXT DEFAULT (datetime('now')),
+            sort_order      INTEGER DEFAULT 0
         )
         """)
         exec("""
         CREATE TABLE IF NOT EXISTS reading_progress (
-            comic_id    INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE,
+            comic_id     INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE,
             current_page INTEGER DEFAULT 0,
-            updated_at  TEXT DEFAULT (datetime('now'))
+            updated_at   TEXT DEFAULT (datetime('now'))
+        )
+        """)
+        exec("""
+        CREATE TABLE IF NOT EXISTS tags (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        )
+        """)
+        exec("""
+        CREATE TABLE IF NOT EXISTS comic_tags (
+            comic_id INTEGER REFERENCES comics(id) ON DELETE CASCADE,
+            tag_id   INTEGER REFERENCES tags(id)   ON DELETE CASCADE,
+            PRIMARY KEY (comic_id, tag_id)
+        )
+        """)
+        exec("""
+        CREATE TABLE IF NOT EXISTS runs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            title       TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            created_at  TEXT DEFAULT (datetime('now'))
+        )
+        """)
+        exec("""
+        CREATE TABLE IF NOT EXISTS run_items (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id   INTEGER REFERENCES runs(id)   ON DELETE CASCADE,
+            comic_id INTEGER REFERENCES comics(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,
+            notes    TEXT DEFAULT '',
+            UNIQUE(run_id, comic_id)
         )
         """)
     }
@@ -238,6 +268,206 @@ final class DatabaseManager {
 
     func deleteComic(_ id: Int64) {
         exec("DELETE FROM comics WHERE id = \(id)")
+    }
+
+    func updateMetadata(_ id: Int64, title: String, publisher: String, character: String?,
+                        series: String, issueNumber: String?) {
+        var stmt: OpaquePointer?
+        let sql = """
+            UPDATE comics SET title=?, publisher=?, character=?, series=?, issue_number=?
+            WHERE id=\(id)
+        """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, publisher, -1, SQLITE_TRANSIENT)
+        if let c = character { sqlite3_bind_text(stmt, 3, c, -1, SQLITE_TRANSIENT) }
+        else                 { sqlite3_bind_null(stmt, 3) }
+        sqlite3_bind_text(stmt, 4, series, -1, SQLITE_TRANSIENT)
+        if let n = issueNumber { sqlite3_bind_text(stmt, 5, n, -1, SQLITE_TRANSIENT) }
+        else                   { sqlite3_bind_null(stmt, 5) }
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    // MARK: - Tags
+
+    func allTags() -> [Tag] {
+        let sql = """
+            SELECT t.id, t.name, COUNT(ct.comic_id) as cnt
+            FROM tags t LEFT JOIN comic_tags ct ON t.id = ct.tag_id
+            GROUP BY t.id ORDER BY cnt DESC, t.name
+        """
+        return rows(sql) { stmt in
+            Tag(id: sqlite3_column_int64(stmt, 0),
+                name: colText(stmt, 1) ?? "",
+                comicCount: Int(sqlite3_column_int(stmt, 2)))
+        }
+    }
+
+    func tags(for comicId: Int64) -> [Tag] {
+        let sql = """
+            SELECT t.id, t.name, 0 as cnt FROM tags t
+            JOIN comic_tags ct ON t.id = ct.tag_id
+            WHERE ct.comic_id = \(comicId)
+            ORDER BY t.name
+        """
+        return rows(sql) { stmt in
+            Tag(id: sqlite3_column_int64(stmt, 0), name: colText(stmt, 1) ?? "", comicCount: 0)
+        }
+    }
+
+    func setTags(for comicId: Int64, names: [String]) {
+        exec("DELETE FROM comic_tags WHERE comic_id = \(comicId)")
+        for name in names {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            exec("INSERT OR IGNORE INTO tags (name) VALUES ('\(trimmed.replacingOccurrences(of: "'", with: "''"))')")
+            exec("""
+                INSERT OR IGNORE INTO comic_tags (comic_id, tag_id)
+                SELECT \(comicId), id FROM tags WHERE name = '\(trimmed.replacingOccurrences(of: "'", with: "''"))'
+            """)
+        }
+    }
+
+    func comics(withTag tagName: String) -> [Comic] {
+        let sql = """
+            SELECT c.id, c.title, c.file_path, c.publisher, c.character, c.series,
+                   c.issue_number, c.page_count, c.rating, c.is_favorite, c.in_reading_list,
+                   '' as tags, c.date_added, COALESCE(rp.current_page, 0) as progress
+            FROM comics c
+            LEFT JOIN reading_progress rp ON c.id = rp.comic_id
+            JOIN comic_tags ct ON c.id = ct.comic_id
+            JOIN tags t ON ct.tag_id = t.id
+            WHERE t.name = ?
+            ORDER BY c.publisher, c.series, c.title
+        """
+        return queryComics(sql, args: [tagName])
+    }
+
+    // MARK: - Runs
+
+    func allRuns() -> [Run] {
+        let sql = """
+            SELECT r.id, r.title, r.description, r.created_at,
+                   COUNT(ri.id) as item_count,
+                   SUM(CASE WHEN c.page_count > 0 AND COALESCE(rp.current_page,0) >= c.page_count - 1
+                            THEN 1 ELSE 0 END) as completed,
+                   MIN(CASE WHEN (c.page_count = 0 OR COALESCE(rp.current_page,0) < c.page_count - 1)
+                            THEN c.id END) as first_unfinished
+            FROM runs r
+            LEFT JOIN run_items ri ON r.id = ri.run_id
+            LEFT JOIN comics c ON ri.comic_id = c.id
+            LEFT JOIN reading_progress rp ON c.id = rp.comic_id
+            GROUP BY r.id
+            ORDER BY r.created_at DESC
+        """
+        return rows(sql) { stmt in
+            let firstId = sqlite3_column_type(stmt, 6) != SQLITE_NULL
+                          ? sqlite3_column_int64(stmt, 6) : nil
+            return Run(
+                id: sqlite3_column_int64(stmt, 0),
+                title: colText(stmt, 1) ?? "",
+                description: colText(stmt, 2) ?? "",
+                createdAt: Date(),
+                itemCount: Int(sqlite3_column_int(stmt, 4)),
+                completedCount: Int(sqlite3_column_int(stmt, 5)),
+                firstUnfinishedComicId: firstId
+            )
+        }
+    }
+
+    func runItems(runId: Int64) -> [RunItem] {
+        let sql = """
+            SELECT ri.id, ri.run_id, ri.position, ri.notes,
+                   c.id, c.title, c.file_path, c.publisher, c.character, c.series,
+                   c.issue_number, c.page_count, c.rating, c.is_favorite, c.in_reading_list,
+                   c.date_added, COALESCE(rp.current_page, 0) as progress
+            FROM run_items ri
+            JOIN comics c ON ri.comic_id = c.id
+            LEFT JOIN reading_progress rp ON c.id = rp.comic_id
+            WHERE ri.run_id = \(runId)
+            ORDER BY ri.position
+        """
+        return rows(sql) { stmt in
+            let comic = Comic(
+                id:            sqlite3_column_int64(stmt, 4),
+                title:         colText(stmt, 5)  ?? "",
+                filePath:      colText(stmt, 6)  ?? "",
+                publisher:     colText(stmt, 7)  ?? "Unknown",
+                character:     colText(stmt, 8),
+                series:        colText(stmt, 9)  ?? "General",
+                issueNumber:   colText(stmt, 10),
+                pageCount:     Int(sqlite3_column_int(stmt, 11)),
+                progress:      Int(sqlite3_column_int(stmt, 16)),
+                rating:        Int(sqlite3_column_int(stmt, 12)),
+                isFavorite:    sqlite3_column_int(stmt, 13) != 0,
+                inReadingList: sqlite3_column_int(stmt, 14) != 0,
+                tags: [],
+                dateAdded: Date()
+            )
+            return RunItem(
+                id:       sqlite3_column_int64(stmt, 0),
+                runId:    sqlite3_column_int64(stmt, 1),
+                comic:    comic,
+                position: Int(sqlite3_column_int(stmt, 2)),
+                notes:    colText(stmt, 3) ?? ""
+            )
+        }
+    }
+
+    @discardableResult
+    func createRun(title: String, description: String = "") -> Int64? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "INSERT INTO runs (title, description) VALUES (?, ?)",
+                                 -1, &stmt, nil) == SQLITE_OK else { return nil }
+        sqlite3_bind_text(stmt, 1, title,       -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, description, -1, SQLITE_TRANSIENT)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+        let id = sqlite3_last_insert_rowid(db)
+        return id > 0 ? id : nil
+    }
+
+    func updateRun(_ id: Int64, title: String, description: String) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "UPDATE runs SET title=?, description=? WHERE id=\(id)",
+                                 -1, &stmt, nil) == SQLITE_OK else { return }
+        sqlite3_bind_text(stmt, 1, title,       -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, description, -1, SQLITE_TRANSIENT)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    func deleteRun(_ id: Int64) {
+        exec("DELETE FROM runs WHERE id = \(id)")
+    }
+
+    func addToRun(runId: Int64, comicId: Int64) {
+        let pos = scalarInt("SELECT COALESCE(MAX(position), -1) + 1 FROM run_items WHERE run_id = \(runId)")
+        exec("INSERT OR IGNORE INTO run_items (run_id, comic_id, position) VALUES (\(runId), \(comicId), \(pos))")
+    }
+
+    func removeFromRun(runId: Int64, comicId: Int64) {
+        exec("DELETE FROM run_items WHERE run_id = \(runId) AND comic_id = \(comicId)")
+    }
+
+    func reorderRunItems(runId: Int64, orderedItemIds: [Int64]) {
+        for (pos, itemId) in orderedItemIds.enumerated() {
+            exec("UPDATE run_items SET position = \(pos) WHERE id = \(itemId) AND run_id = \(runId)")
+        }
+    }
+
+    func updateRunItemNotes(itemId: Int64, notes: String) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "UPDATE run_items SET notes=? WHERE id=\(itemId)",
+                                 -1, &stmt, nil) == SQLITE_OK else { return }
+        sqlite3_bind_text(stmt, 1, notes, -1, SQLITE_TRANSIENT)
+        sqlite3_step(stmt)
+        sqlite3_finalize(stmt)
+    }
+
+    func isComicInRun(runId: Int64, comicId: Int64) -> Bool {
+        scalarInt("SELECT COUNT(*) FROM run_items WHERE run_id=\(runId) AND comic_id=\(comicId)") > 0
     }
 
     // MARK: - Public helpers for ad-hoc queries (used by StatsView)
