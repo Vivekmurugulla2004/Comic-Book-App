@@ -28,6 +28,7 @@ struct ContentView: View {
                 .tabItem { Label("Settings",    systemImage: "gear") }
         }
         .tint(.arcGold)
+        .background(Color.arcBg.ignoresSafeArea())
     }
 
     // MARK: - iPad (sidebar)
