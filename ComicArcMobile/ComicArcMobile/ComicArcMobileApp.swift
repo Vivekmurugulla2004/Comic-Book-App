@@ -10,6 +10,7 @@ struct ComicArcMobileApp: App {
                 .environmentObject(library)
                 .preferredColorScheme(.dark)
                 .tint(.arcGold)
+                .background(Color.arcBg.ignoresSafeArea())
                 .onOpenURL { url in
                     library.importFiles([url])
                 }
