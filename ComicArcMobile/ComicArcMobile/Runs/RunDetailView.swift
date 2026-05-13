@@ -35,7 +35,7 @@ struct RunDetailView: View {
                                         Image(systemName: "play.fill")
                                             .foregroundStyle(.white)
                                             .frame(width: 36, height: 36)
-                                            .background(Color.orange)
+                                            .background(Color.arcGold)
                                             .clipShape(Circle())
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text("Resume Run")
@@ -89,10 +89,10 @@ struct RunDetailView: View {
             .navigationTitle(run.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button("Done") { dismiss() }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showEdit = true } label: {
                         Image(systemName: "pencil")
                     }
@@ -169,12 +169,12 @@ struct RunItemRow: View {
                 if !item.notes.isEmpty {
                     Text(item.notes)
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.arcGold)
                         .lineLimit(1)
                 }
                 if item.comic.pageCount > 0 && item.comic.isStarted && !item.isFinished {
                     ProgressView(value: item.comic.progressPercent)
-                        .tint(.orange)
+                        .tint(.arcGold)
                         .frame(maxWidth: 120)
                 }
             }
@@ -214,8 +214,8 @@ struct RunItemRow: View {
 
     private var statusColor: Color {
         if item.isFinished { return .green }
-        if item.isStarted  { return .orange }
-        return Color(.systemGray3)
+        if item.isStarted  { return .arcGold }
+        return Color.arcMuted
     }
 }
 

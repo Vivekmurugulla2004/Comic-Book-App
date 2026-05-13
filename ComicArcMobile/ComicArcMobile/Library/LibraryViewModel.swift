@@ -12,6 +12,7 @@ final class LibraryViewModel: ObservableObject {
     @Published var allTags: [Tag] = []
 
     @Published var selectedPublisher: String = "All"
+    @Published var sortOrder: DatabaseManager.SortOrder = .publisher
     @Published var searchText: String = ""
     @Published var selectedTag: String?
     @Published var isImporting = false
@@ -38,7 +39,8 @@ final class LibraryViewModel: ObservableObject {
         } else {
             comics = db.allComics(
                 publisher: selectedPublisher == "All" ? nil : selectedPublisher,
-                search: searchText.isEmpty ? nil : searchText
+                search: searchText.isEmpty ? nil : searchText,
+                sortOrder: sortOrder
             )
         }
     }
@@ -54,7 +56,8 @@ final class LibraryViewModel: ObservableObject {
         comics = db.allComics(
             publisher: selectedPublisher == "All" ? nil : selectedPublisher,
             character: character,
-            series: series
+            series: series,
+            sortOrder: sortOrder
         )
     }
 

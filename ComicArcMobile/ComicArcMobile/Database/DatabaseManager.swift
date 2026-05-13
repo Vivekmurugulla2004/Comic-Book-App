@@ -92,12 +92,31 @@ final class DatabaseManager {
 
     // MARK: - Query: Comics
 
+    enum SortOrder: String, CaseIterable {
+        case publisher = "Publisher"
+        case title     = "Title"
+        case dateAdded = "Date Added"
+        case rating    = "Rating"
+        case progress  = "Progress"
+
+        var orderClause: String {
+            switch self {
+            case .publisher: return "c.publisher, c.series, c.issue_number, c.title"
+            case .title:     return "c.title"
+            case .dateAdded: return "c.date_added DESC"
+            case .rating:    return "c.rating DESC, c.title"
+            case .progress:  return "COALESCE(rp.current_page, 0) DESC, c.title"
+            }
+        }
+    }
+
     func allComics(publisher: String? = nil,
                    character: String? = nil,
                    series: String? = nil,
                    search: String? = nil,
                    favoritesOnly: Bool = false,
-                   readingListOnly: Bool = false) -> [Comic] {
+                   readingListOnly: Bool = false,
+                   sortOrder: SortOrder = .publisher) -> [Comic] {
         var conds = ["1=1"]
         var args: [String] = []
 
@@ -118,7 +137,7 @@ final class DatabaseManager {
             FROM comics c
             LEFT JOIN reading_progress rp ON c.id = rp.comic_id
             WHERE \(conds.joined(separator: " AND "))
-            ORDER BY c.publisher, c.series, c.issue_number, c.title
+            ORDER BY \(sortOrder.orderClause)
         """
         return queryComics(sql, args: args)
     }
