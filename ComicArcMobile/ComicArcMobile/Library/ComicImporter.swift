@@ -13,7 +13,6 @@ enum ComicImporter {
     /// Expected folder layout: Publisher/Character/Series/file.cbz
     static func parse(url: URL) -> ComicMeta {
         let filename = url.deletingPathExtension().lastPathComponent
-        let pathComponents = url.pathComponents
 
         // Strip the app's Documents/Comics prefix to get relative parts
         let docsPath = FileManager.default

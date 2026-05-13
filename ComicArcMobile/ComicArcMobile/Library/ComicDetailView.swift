@@ -4,6 +4,7 @@ struct ComicDetailView: View {
     @EnvironmentObject var library: LibraryViewModel
     @Environment(\.dismiss) private var dismiss
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let comicId: Int64
     @State private var comic: Comic?
     @State private var tags: [Tag] = []
@@ -12,6 +13,7 @@ struct ComicDetailView: View {
     @State private var showMetadataEditor = false
     @State private var showAddToRun = false
     @State private var coverImage: UIImage?
+    @State private var newTagText: String = ""
 
     private let db = DatabaseManager.shared
 
@@ -63,16 +65,19 @@ struct ComicDetailView: View {
 
     private func hero(_ comic: Comic) -> some View {
         ZStack(alignment: .bottom) {
+            let heroHeight: CGFloat = sizeClass == .regular ? 480 : 320
+            let coverHeight: CGFloat = sizeClass == .regular ? 300 : 190
+
             if let img = coverImage {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
                     .frame(maxWidth: .infinity)
-                    .frame(height: 320)
+                    .frame(height: heroHeight)
                     .clipped()
                     .overlay(.ultraThinMaterial.opacity(0.45))
             } else {
-                Color(.systemGray5).frame(height: 320)
+                Color.arcSurface.frame(height: heroHeight)
             }
 
             VStack(spacing: 12) {
@@ -80,7 +85,7 @@ struct ComicDetailView: View {
                     Image(uiImage: img)
                         .resizable()
                         .scaledToFit()
-                        .frame(height: 190)
+                        .frame(height: coverHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .shadow(radius: 12)
                 }
@@ -94,7 +99,7 @@ struct ComicDetailView: View {
                         .frame(maxWidth: 220)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(.arcGold)
             }
             .padding(.bottom, 20)
         }
@@ -115,11 +120,9 @@ struct ComicDetailView: View {
             ratingSection(comic)
             Divider().padding(.horizontal)
 
-            // Tags
-            if !tags.isEmpty {
-                tagsSection
-                Divider().padding(.horizontal)
-            }
+            // Tags (always shown so user can add)
+            tagsSection
+            Divider().padding(.horizontal)
 
             // Metadata
             metaSection(comic)
@@ -140,7 +143,7 @@ struct ComicDetailView: View {
                 Text("Page \(comic.progress) of \(comic.pageCount)")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            ProgressView(value: comic.progressPercent).tint(.orange)
+            ProgressView(value: comic.progressPercent).tint(.arcGold)
             if comic.isFinished {
                 Label("Finished", systemImage: "checkmark.circle.fill")
                     .font(.caption).foregroundStyle(.green)
@@ -157,7 +160,7 @@ struct ComicDetailView: View {
                 ForEach(1...5, id: \.self) { i in
                     Image(systemName: i <= comic.rating ? "star.fill" : "star")
                         .font(.title2)
-                        .foregroundStyle(i <= comic.rating ? .orange : Color(.systemGray3))
+                        .foregroundStyle(i <= comic.rating ? Color.arcGold : Color.arcMuted)
                         .onTapGesture {
                             db.setRating(comic.id, i == comic.rating ? 0 : i)
                             reload(); library.load()
@@ -175,17 +178,54 @@ struct ComicDetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(tags) { tag in
-                        Text(tag.name)
-                            .font(.caption)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
-                            .clipShape(Capsule())
+                        HStack(spacing: 4) {
+                            Text(tag.name)
+                            Button {
+                                let remaining = tags.filter { $0.id != tag.id }.map(\.name)
+                                db.setTags(for: comicId, names: remaining)
+                                reload()
+                            } label: {
+                                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                            }
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.arcGold.opacity(0.15))
+                        .foregroundStyle(Color.arcGold)
+                        .clipShape(Capsule())
                     }
+
+                    HStack(spacing: 4) {
+                        TextField("Add tag", text: $newTagText)
+                            .font(.caption)
+                            .frame(minWidth: 60, maxWidth: 100)
+                            .onSubmit { addTag() }
+                        if !newTagText.isEmpty {
+                            Button { addTag() } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color.arcSurface)
+                    .overlay(Capsule().stroke(Color.arcBorder, lineWidth: 1))
+                    .clipShape(Capsule())
+                    .foregroundStyle(Color.arcGold)
                 }
                 .padding(.horizontal)
             }
         }
+    }
+
+    private func addTag() {
+        let name = newTagText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        let existing = tags.map(\.name)
+        guard !existing.contains(name) else { newTagText = ""; return }
+        db.setTags(for: comicId, names: existing + [name])
+        newTagText = ""
+        reload()
     }
 
     private func metaSection(_ comic: Comic) -> some View {
@@ -230,6 +270,14 @@ struct ComicDetailView: View {
                 showMetadataEditor = true
             }
 
+            if comic.pageCount > 0 && !comic.isFinished {
+                actionButton(title: "Mark as Read",
+                             icon: "checkmark.circle", tint: .green) {
+                    db.updateProgress(comicId: comic.id, page: comic.pageCount - 1)
+                    reload(); library.load()
+                }
+            }
+
             if comic.isFinished || comic.isStarted {
                 actionButton(title: "Mark Unread",
                              icon: "arrow.counterclockwise", tint: .gray) {
@@ -250,7 +298,7 @@ struct ComicDetailView: View {
 
     @ToolbarContentBuilder
     private func toolbar(_ comic: Comic) -> some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
+        ToolbarItem(placement: .topBarTrailing) {
             Button {
                 db.setFavorite(comic.id, !comic.isFavorite)
                 reload(); library.load()
@@ -287,7 +335,7 @@ struct ComicDetailView: View {
         comic = db.comic(id: comicId)
         tags  = db.tags(for: comicId)
         if let c = comic {
-            Task { coverImage = await ThumbnailCache.shared.thumbnail(comicId: c.id) }
+            coverImage = ThumbnailCache.shared.thumbnail(comicId: c.id)
         }
     }
 }

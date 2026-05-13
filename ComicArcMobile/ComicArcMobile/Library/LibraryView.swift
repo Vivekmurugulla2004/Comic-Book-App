@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct LibraryView: View {
     @EnvironmentObject var library: LibraryViewModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showImporter = false
     @State private var browseMode: BrowseMode = .characters
     @State private var selectedCharacter: SeriesGroup?
@@ -12,7 +13,9 @@ struct LibraryView: View {
 
     enum BrowseMode { case characters, flat }
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 140), spacing: 12)]
+    }
 
     // True when user is actively searching — bypass the hierarchy
     private var isSearching: Bool { !library.searchText.isEmpty }
@@ -24,6 +27,11 @@ struct LibraryView: View {
                     // Import progress banner
                     if library.importProgress.total > 0 {
                         importBanner
+                    }
+
+                    // Publisher filter tabs
+                    if !library.publishers.isEmpty && !isSearching {
+                        publisherFilterRow
                     }
 
                     // Tag filter chips (only in flat / search mode)
@@ -56,7 +64,7 @@ struct LibraryView: View {
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $library.searchText, prompt: "Search comics")
-            .onChange(of: library.searchText) { _ in
+            .onChange(of: library.searchText) { _, _ in
                 if isSearching {
                     library.loadSearchResults()
                 } else {
@@ -112,9 +120,42 @@ struct LibraryView: View {
             Spacer()
         }
         .padding(12)
-        .background(Color.orange.opacity(0.15))
+        .background(Color.arcGold.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .padding(.top, 8)
+    }
+
+    // MARK: - Publisher Filter Row
+
+    private var publisherFilterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                publisherChip("All", isActive: library.selectedPublisher == "All") {
+                    library.selectedPublisher = "All"
+                    library.load()
+                }
+                ForEach(library.publishers, id: \.self) { pub in
+                    publisherChip(pub, isActive: library.selectedPublisher == pub) {
+                        library.selectedPublisher = (library.selectedPublisher == pub) ? "All" : pub
+                        library.load()
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func publisherChip(_ label: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.caption.bold())
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(isActive ? Color.arcGold : Color.arcSurface)
+                .foregroundStyle(isActive ? Color.arcBg : Color.primary)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.arcBorder, lineWidth: isActive ? 0 : 1))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Tag Filter Row
@@ -142,7 +183,7 @@ struct LibraryView: View {
             Text(label)
                 .font(.caption)
                 .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(isActive ? Color.orange : Color(.secondarySystemBackground))
+                .background(isActive ? Color.arcGold : Color.arcSurface)
                 .foregroundStyle(isActive ? .white : .primary)
                 .clipShape(Capsule())
         }
@@ -153,7 +194,7 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
             if !isSearching {
                 Picker("", selection: $browseMode) {
                     Image(systemName: "square.grid.2x2").tag(BrowseMode.characters)
@@ -161,13 +202,27 @@ struct LibraryView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 80)
+
+                Menu {
+                    ForEach(DatabaseManager.SortOrder.allCases, id: \.self) { order in
+                        Button {
+                            library.sortOrder = order
+                            library.load()
+                        } label: {
+                            Label(order.rawValue,
+                                  systemImage: library.sortOrder == order ? "checkmark" : "")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
             }
             Button { showImporter = true } label: {
                 Image(systemName: "plus")
             }
         }
         if !isSearching && (selectedSeries != nil || selectedCharacter != nil) {
-            ToolbarItem(placement: .navigationBarLeading) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     withAnimation {
                         if selectedSeries != nil { selectedSeries = nil }
@@ -284,7 +339,7 @@ struct ContinueCard: View {
                 .overlay(alignment: .bottom) {
                     GeometryReader { geo in
                         Rectangle()
-                            .fill(Color.orange)
+                            .fill(Color.arcGold)
                             .frame(width: geo.size.width * comic.progressPercent, height: 3)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                     }
@@ -314,7 +369,7 @@ struct SeriesCard: View {
                 if group.isFinished {
                     badge("Done", color: .green)
                 } else if group.isReading {
-                    badge("Reading", color: .orange)
+                    badge("Reading", color: .arcGold)
                 }
             }
             Text(group.groupName)

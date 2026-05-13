@@ -2,10 +2,13 @@ import SwiftUI
 
 struct FavoritesView: View {
     @EnvironmentObject var library: LibraryViewModel
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var comics: [Comic] = []
     @State private var detailComicId: Int64?
 
-    private let columns = [GridItem(.adaptive(minimum: 140), spacing: 12)]
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 140), spacing: 12)]
+    }
     private let db = DatabaseManager.shared
 
     var body: some View {

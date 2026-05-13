@@ -1,4 +1,5 @@
 import SwiftUI
+import SQLite3
 
 struct StatsView: View {
     @EnvironmentObject var library: LibraryViewModel
@@ -12,7 +13,7 @@ struct StatsView: View {
                         // Summary cards
                         Section {
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                                statTile("Comics", value: "\(s.totalComics)", icon: "books.vertical", color: .orange)
+                                statTile("Comics", value: "\(s.totalComics)", icon: "books.vertical", color: .arcGold)
                                 statTile("Pages Read", value: "\(s.pagesRead)", icon: "doc.text", color: .blue)
                                 statTile("Favorites", value: "\(s.favorites)", icon: "heart.fill", color: .red)
                                 statTile("In Progress", value: "\(s.inProgress)", icon: "clock", color: .purple)
@@ -24,7 +25,7 @@ struct StatsView: View {
                         // Completion breakdown
                         Section("Reading Status") {
                             completionRow("Finished", count: s.finished, total: s.totalComics, color: .green)
-                            completionRow("In Progress", count: s.inProgress, total: s.totalComics, color: .orange)
+                            completionRow("In Progress", count: s.inProgress, total: s.totalComics, color: .arcGold)
                             completionRow("Unread", count: s.unread, total: s.totalComics, color: .secondary)
                         }
 
@@ -112,7 +113,7 @@ struct StatsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color.arcCard)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -128,7 +129,7 @@ struct StatsView: View {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5))
+                    Capsule().fill(Color.arcBorder)
                     Capsule()
                         .fill(color)
                         .frame(width: total > 0 ? geo.size.width * CGFloat(count) / CGFloat(total) : 0)
@@ -151,9 +152,9 @@ struct StatsView: View {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5))
+                    Capsule().fill(Color.arcBorder)
                     Capsule()
-                        .fill(Color.orange)
+                        .fill(Color.arcGold)
                         .frame(width: total > 0 ? geo.size.width * CGFloat(row.count) / CGFloat(total) : 0)
                 }
             }

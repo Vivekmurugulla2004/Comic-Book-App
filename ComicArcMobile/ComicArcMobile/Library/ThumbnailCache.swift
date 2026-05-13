@@ -1,20 +1,21 @@
 import UIKit
 
-actor ThumbnailCache {
+@MainActor
+final class ThumbnailCache {
     static let shared = ThumbnailCache()
 
     private var cache: [Int64: UIImage] = [:]
     private let db = DatabaseManager.shared
 
-    private var coversDir: URL {
-        FileManager.default
+    private let coversDir: URL = {
+        let dir = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ComicArc/covers")
-    }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
 
-    private init() {
-        try? FileManager.default.createDirectory(at: coversDir, withIntermediateDirectories: true)
-    }
+    private init() {}
 
     func thumbnail(comicId: Int64) -> UIImage? {
         if let cached = cache[comicId] { return cached }
