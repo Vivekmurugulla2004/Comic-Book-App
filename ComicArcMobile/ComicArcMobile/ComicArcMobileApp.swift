@@ -10,8 +10,11 @@ private let arcGoldUIColor    = UIColor(red: 247/255, green: 201/255, blue: 72/2
 struct ComicArcMobileApp: App {
     @StateObject private var library = LibraryViewModel()
     @AppStorage("onboardingDone") private var onboardingDone = false
+    @AppStorage("appColorScheme") private var appColorScheme: String = "dark"
 
     init() {
+        PreferenceSync.shared.start()
+
         // Tab bar
         let tab = UITabBarAppearance()
         tab.configureWithOpaqueBackground()
@@ -48,7 +51,7 @@ struct ComicArcMobileApp: App {
                 }
             }
             .environmentObject(library)
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(appColorScheme == "system" ? nil : .dark)
             .tint(.arcGold)
             .background(Color.arcBg.ignoresSafeArea())
             .onOpenURL { url in

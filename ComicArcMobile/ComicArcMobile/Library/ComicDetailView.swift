@@ -314,11 +314,22 @@ struct ComicDetailView: View {
     private func metaSection(_ comic: Comic) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             metaRow("Publisher", comic.publisher)
-            if let char = comic.character { metaRow("Character", char) }
-            if comic.series != "General"  { metaRow("Series", comic.series) }
-            if let num = comic.issueNumber { metaRow("Issue", "#\(num)") }
+            if let char = comic.character   { metaRow("Character", char) }
+            if comic.series != "General"    { metaRow("Series", comic.series) }
+            if let num = comic.issueNumber  { metaRow("Issue", "#\(num)") }
+            if let writer = comic.writer, !writer.isEmpty { metaRow("Writer", writer) }
             metaRow("Format", comic.fileExtension.uppercased())
             if comic.pageCount > 0 { metaRow("Pages", "\(comic.pageCount)") }
+            if let summary = comic.summary, !summary.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Summary")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(.horizontal)
     }

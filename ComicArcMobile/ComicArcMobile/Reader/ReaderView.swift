@@ -313,7 +313,8 @@ struct ReaderView: View {
         autoplayTimer?.invalidate()
         let interval = storedInterval
         autoplayCountdown = interval
-        autoplayTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+        // Add to .common so it fires even while UIScrollView (thumbnail strip) is tracking
+        let timer = Timer(timeInterval: 1, repeats: true) { _ in
             Task { @MainActor in
                 autoplayCountdown -= 1
                 if autoplayCountdown <= 0 {
@@ -322,6 +323,8 @@ struct ReaderView: View {
                 }
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        autoplayTimer = timer
     }
 
     private func advancePage() {
@@ -369,6 +372,7 @@ struct PagedReaderView: View {
     @Binding var currentPage: Int
     var onTapCenter: () -> Void = {}
 
+    @AppStorage("rtlMode") private var rtlMode = false
     @State private var zoomScale: CGFloat = 1
 
     var body: some View {
@@ -384,19 +388,20 @@ struct PagedReaderView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            // Double-tap: zoom in/out. Must be on the same view as the single-tap
-            // below so SwiftUI coordinates them — count:1 waits for count:2 to fail.
+            // Double-tap: zoom. Must be on same view as single-tap for SwiftUI coordination.
             .onTapGesture(count: 2) {
-                withAnimation(.spring()) {
-                    zoomScale = zoomScale > 1 ? 1 : 2.5
-                }
+                withAnimation(.spring()) { zoomScale = zoomScale > 1 ? 1 : 2.5 }
             }
-            // Single-tap with location: left third → prev, right third → next, centre → toolbar
+            // Single-tap: left/right thirds navigate; RTL flips the direction.
             .onTapGesture { location in
                 guard zoomScale <= 1 else { return }
-                if location.x < geo.size.width / 3 {
+                let isLeft  = location.x < geo.size.width / 3
+                let isRight = location.x > geo.size.width * 2 / 3
+                let wantPrev = rtlMode ? isRight : isLeft
+                let wantNext = rtlMode ? isLeft  : isRight
+                if wantPrev {
                     if currentPage > 0 { currentPage -= 1 }
-                } else if location.x > geo.size.width * 2 / 3 {
+                } else if wantNext {
                     if currentPage < comic.pageCount - 1 { currentPage += 1 }
                 } else {
                     onTapCenter()
@@ -414,14 +419,47 @@ struct ScrollReaderView: View {
     @Binding var currentPage: Int
 
     var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
-                ForEach(0..<max(1, comic.pageCount), id: \.self) { index in
-                    AsyncPageImage(comic: comic, index: index, zoomable: false)
-                        .onAppear { currentPage = index }
+        GeometryReader { viewport in
+            ScrollView(.vertical) {
+                LazyVStack(spacing: 0) {
+                    ForEach(0..<max(1, comic.pageCount), id: \.self) { index in
+                        AsyncPageImage(comic: comic, index: index, zoomable: false)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: ScrollPageKey.self,
+                                        value: [ScrollPageItem(
+                                            index: index,
+                                            midY:  geo.frame(in: .named("scrollReader")).midY
+                                        )]
+                                    )
+                                }
+                            )
+                    }
+                }
+            }
+            .coordinateSpace(name: "scrollReader")
+            .onPreferenceChange(ScrollPageKey.self) { pages in
+                let viewportMid = viewport.size.height / 2
+                if let closest = pages.min(by: {
+                    abs($0.midY - viewportMid) < abs($1.midY - viewportMid)
+                }) {
+                    currentPage = closest.index
                 }
             }
         }
+    }
+}
+
+private struct ScrollPageItem: Equatable {
+    let index: Int
+    let midY: CGFloat
+}
+
+private struct ScrollPageKey: PreferenceKey {
+    static var defaultValue: [ScrollPageItem] = []
+    static func reduce(value: inout [ScrollPageItem], nextValue: () -> [ScrollPageItem]) {
+        value.append(contentsOf: nextValue())
     }
 }
 
@@ -442,6 +480,7 @@ struct AsyncPageImage: View {
     }
 
     @State private var image: UIImage?
+    @State private var loadFailed = false
 
     var body: some View {
         Group {
@@ -453,39 +492,36 @@ struct AsyncPageImage: View {
                         .resizable()
                         .scaledToFit()
                 }
+            } else if loadFailed {
+                Color.black
+                    .overlay {
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.title2)
+                                .foregroundStyle(Color.arcMuted)
+                            Text("Page unavailable")
+                                .font(.caption)
+                                .foregroundStyle(Color.arcMuted)
+                        }
+                    }
+                    .aspectRatio(2/3, contentMode: .fit)
             } else {
                 Color.black
                     .overlay { ProgressView().tint(.white) }
                     .aspectRatio(2/3, contentMode: .fit)
             }
         }
-        .task(id: index) { await load() }
+        .task(id: index) {
+            loadFailed = false
+            image = nil
+            await load()
+        }
     }
 
     private func load() async {
-        let cacheKey = PageImageCache.key(filePath: comic.filePath, index: index)
-        if let cached = PageImageCache.shared.image(for: cacheKey) {
-            image = cached
+        guard let result = await loadPageImage(comic: comic, index: index) else {
+            loadFailed = true
             return
-        }
-        let filePath = comic.filePath
-        let ext      = comic.fileExtension
-        let url      = URL(fileURLWithPath: filePath)
-        let result: UIImage? = await Task.detached(priority: .userInitiated) {
-            switch ext {
-            case "cbz":
-                return CBZReaderCache.shared.reader(for: filePath)?.image(at: index)
-            case "pdf":
-                return PDFPageCounter.image(url: url, at: index)
-            case "jpg", "jpeg", "png":
-                return index == 0 ? UIImage(contentsOfFile: filePath) : nil
-            default:
-                return nil
-            }
-        }.value
-        if let result {
-            let cost = Int(result.size.width * result.scale * result.size.height * result.scale * 4)
-            PageImageCache.shared.setImage(result, for: cacheKey, cost: cost)
         }
         image = result
     }
@@ -526,6 +562,8 @@ struct PDFReaderView: UIViewRepresentable {
     class Coordinator: NSObject {
         var parent: PDFReaderView
         init(_ parent: PDFReaderView) { self.parent = parent }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
 
         @objc func pageChanged(_ note: Notification) {
             guard let view = note.object as? PDFView,
@@ -602,23 +640,6 @@ private struct ThumbnailPageCell: View {
     }
 
     private func load() async {
-        let key = PageImageCache.key(filePath: comic.filePath, index: index)
-        if let cached = PageImageCache.shared.image(for: key) { image = cached; return }
-        let filePath = comic.filePath
-        let ext      = comic.fileExtension
-        let url      = URL(fileURLWithPath: filePath)
-        let result: UIImage? = await Task.detached(priority: .background) {
-            switch ext {
-            case "cbz": return CBZReaderCache.shared.reader(for: filePath)?.image(at: index)
-            case "pdf": return PDFPageCounter.image(url: url, at: index)
-            case "jpg", "jpeg", "png": return index == 0 ? UIImage(contentsOfFile: filePath) : nil
-            default:    return nil
-            }
-        }.value
-        if let result {
-            let cost = Int(result.size.width * result.scale * result.size.height * result.scale * 4)
-            PageImageCache.shared.setImage(result, for: key, cost: cost)
-        }
-        image = result
+        image = await loadPageImage(comic: comic, index: index)
     }
 }

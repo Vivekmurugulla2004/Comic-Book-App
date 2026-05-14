@@ -123,7 +123,7 @@ final class LibraryViewModel: ObservableObject {
             defer { if accessing { folderURL.stopAccessingSecurityScopedResource() } }
 
             // Phase 1: scan recursively
-            let supported = Set(["cbz", "pdf", "jpg", "jpeg", "png"])
+            let supported = Set(["cbz", "cbr", "pdf", "jpg", "jpeg", "png"])
             guard let enumerator = FileManager.default.enumerator(
                 at: folderURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
@@ -165,6 +165,20 @@ final class LibraryViewModel: ObservableObject {
 
     // Preserves relative directory structure so ComicImporter derives publisher/character/series from path.
     private func importFileFromFolder(_ source: URL, folderRoot: URL) async -> Bool {
+        if source.pathExtension.lowercased() == "cbr" {
+            // Build relative path hint (preserving folder structure) with .cbr directory name
+            var rel = source.path
+            let rootPath = folderRoot.path
+            if rel.hasPrefix(rootPath) {
+                rel = String(rel.dropFirst(rootPath.count))
+                while rel.hasPrefix("/") { rel = String(rel.dropFirst()) }
+            } else {
+                rel = source.lastPathComponent
+            }
+            let relDir = URL(fileURLWithPath: rel).deletingPathExtension().path + ".cbr"
+            return await importCBR(source, relativePathHint: relDir)
+        }
+
         let docs = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Comics")
@@ -185,18 +199,24 @@ final class LibraryViewModel: ObservableObject {
             withIntermediateDirectories: true
         )
 
+        // Skip if already catalogued
+        if db.comicId(forFilePath: dest.path) != nil { return true }
+
         if !FileManager.default.fileExists(atPath: dest.path) {
             do {
                 try FileManager.default.copyItem(at: source, to: dest)
             } catch {
-                let msg = error.localizedDescription
-                await MainActor.run { self.importError = msg }
+                await MainActor.run { self.importError = error.localizedDescription }
                 return false
             }
         }
 
         let meta      = ComicImporter.parse(url: dest)
         let pageCount = await ComicImporter.pageCount(url: dest)
+
+        let ext = dest.pathExtension.lowercased()
+        if pageCount == 0 && (ext == "cbz" || ext == "pdf") { return false }
+
         db.insertComic(
             title:       meta.title,
             filePath:    dest.path,
@@ -204,7 +224,50 @@ final class LibraryViewModel: ObservableObject {
             character:   meta.character,
             series:      meta.series,
             issueNumber: meta.issueNumber,
-            pageCount:   pageCount
+            pageCount:   pageCount,
+            writer:      meta.writer,
+            summary:     meta.summary
+        )
+        return true
+    }
+
+    // MARK: - CBR Import
+
+    private func importCBR(_ source: URL, relativePathHint: String? = nil) async -> Bool {
+        let docs = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Comics")
+        try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+
+        // Extracted folder has the same base name as the CBR but stored as a directory with .cbr extension.
+        let folderName = relativePathHint ?? source.deletingPathExtension().lastPathComponent + ".cbr"
+        let destDir    = docs.appendingPathComponent(folderName)
+
+        if db.comicId(forFilePath: destDir.path) != nil { return true }
+
+        let extractedURLs: [URL]
+        do {
+            extractedURLs = try await Task.detached(priority: .userInitiated) {
+                try RARExtractor.extract(archiveURL: source, destination: destDir)
+            }.value
+        } catch {
+            // Clean up any partially-extracted files so we don't leave orphan data on disk
+            try? FileManager.default.removeItem(at: destDir)
+            await MainActor.run { self.importError = error.localizedDescription }
+            return false
+        }
+
+        let meta = ComicImporter.parse(url: source)
+        db.insertComic(
+            title:       meta.title,
+            filePath:    destDir.path,
+            publisher:   meta.publisher,
+            character:   meta.character,
+            series:      meta.series,
+            issueNumber: meta.issueNumber,
+            pageCount:   extractedURLs.count,
+            writer:      meta.writer,
+            summary:     meta.summary
         )
         return true
     }
@@ -214,24 +277,36 @@ final class LibraryViewModel: ObservableObject {
         let accessing = source.startAccessingSecurityScopedResource()
         defer { if accessing { source.stopAccessingSecurityScopedResource() } }
 
+        if source.pathExtension.lowercased() == "cbr" {
+            let ok = await importCBR(source)
+            return ok
+        }
+
         let docs = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Comics")
         try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
 
         let dest = docs.appendingPathComponent(source.lastPathComponent)
+
+        // Skip if already catalogued by path
+        if db.comicId(forFilePath: dest.path) != nil { return true }
+
         if !FileManager.default.fileExists(atPath: dest.path) {
             do {
                 try FileManager.default.copyItem(at: source, to: dest)
             } catch {
-                let msg = error.localizedDescription
-                await MainActor.run { self.importError = msg }
+                await MainActor.run { self.importError = error.localizedDescription }
                 return false
             }
         }
 
         let meta      = ComicImporter.parse(url: dest)
         let pageCount = await ComicImporter.pageCount(url: dest)
+
+        let ext = dest.pathExtension.lowercased()
+        if pageCount == 0 && (ext == "cbz" || ext == "pdf") { return false }
+
         db.insertComic(
             title:       meta.title,
             filePath:    dest.path,
@@ -239,7 +314,9 @@ final class LibraryViewModel: ObservableObject {
             character:   meta.character,
             series:      meta.series,
             issueNumber: meta.issueNumber,
-            pageCount:   pageCount
+            pageCount:   pageCount,
+            writer:      meta.writer,
+            summary:     meta.summary
         )
         return true
     }
@@ -252,6 +329,16 @@ final class LibraryViewModel: ObservableObject {
     }
 
     func delete(_ comic: Comic) {
+        _deleteOne(comic)
+        load()
+    }
+
+    func deleteBatch(_ comics: [Comic]) {
+        comics.forEach { _deleteOne($0) }
+        load()
+    }
+
+    private func _deleteOne(_ comic: Comic) {
         let docsPath = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Comics").path
@@ -260,8 +347,8 @@ final class LibraryViewModel: ObservableObject {
         }
         ThumbnailCache.shared.invalidate(comicId: comic.id)
         CBZReaderCache.shared.invalidate(path: comic.filePath)
+        DirectoryReaderCache.shared.invalidate(path: comic.filePath)
         db.deleteComic(comic.id)
-        load()
     }
 
     func updateProgress(_ comic: Comic, page: Int) {

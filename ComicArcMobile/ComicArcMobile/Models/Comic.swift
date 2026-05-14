@@ -15,6 +15,8 @@ struct Comic: Identifiable, Hashable {
     var inReadingList: Bool
     var tags: [String]
     var dateAdded: Date
+    var writer: String?
+    var summary: String?
 
     var progressPercent: Double {
         guard pageCount > 0 else { return 0 }
@@ -45,3 +47,5 @@ struct SeriesGroup: Identifiable {
     var isFinished: Bool { issueCount > 0 && completed == issueCount }
     var isReading: Bool  { started > 0 && !isFinished }
 }
+
+struct ComicSheetID: Identifiable { let id: Int64 }

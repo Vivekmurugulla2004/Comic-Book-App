@@ -3,11 +3,13 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var library: LibraryViewModel
-    @AppStorage("defaultReadMode") private var defaultReadMode: String = "paged"
-    @AppStorage("onboardingDone") private var onboardingDone = true
+    @AppStorage("defaultReadMode")  private var defaultReadMode: String  = "paged"
+    @AppStorage("rtlMode")          private var rtlMode: Bool            = false
+    @AppStorage("appColorScheme")   private var appColorScheme: String   = "dark"
+    @AppStorage("onboardingDone")   private var onboardingDone           = true
     @AppStorage("autoplayInterval") private var autoplayInterval: Double = 10
     @State private var showClearConfirm = false
-    @State private var showExportSheet = false
+    @State private var showExportSheet  = false
     @State private var showImportBackup = false
     @State private var exportURL: URL?
     @State private var storageSize: String = "…"
@@ -22,12 +24,23 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Appearance") {
+                    Picker("Theme", selection: $appColorScheme) {
+                        Text("Dark").tag("dark")
+                        Text("System").tag("system")
+                    }
+                    .accessibilityLabel("App theme")
+                }
+
                 Section("Reader") {
                     Picker("Default Mode", selection: $defaultReadMode) {
                         Text("Page by Page").tag("paged")
                         Text("Vertical Scroll").tag("scroll")
                     }
                     .accessibilityLabel("Default reading mode")
+
+                    Toggle("Right-to-Left (Manga)", isOn: $rtlMode)
+                        .accessibilityLabel("Right-to-left page navigation for manga")
 
                     HStack {
                         Text("Autoplay Interval")
@@ -79,9 +92,9 @@ struct SettingsView: View {
 
                 Section("Supported Formats") {
                     LabeledContent("CBZ", value: "Supported")
+                    LabeledContent("CBR", value: "Supported (RAR4 + RAR5)")
                     LabeledContent("PDF", value: "Supported")
                     LabeledContent("JPEG / PNG", value: "Supported")
-                    LabeledContent("CBR", value: "Not supported")
                 }
 
                 Section("About") {
@@ -93,6 +106,10 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(Color.arcBg)
             .onAppear { computeStorageSize() }
+            .onChange(of: defaultReadMode)  { _, _ in PreferenceSync.shared.push(key: "defaultReadMode") }
+            .onChange(of: rtlMode)          { _, _ in PreferenceSync.shared.push(key: "rtlMode") }
+            .onChange(of: appColorScheme)   { _, _ in PreferenceSync.shared.push(key: "appColorScheme") }
+            .onChange(of: autoplayInterval) { _, _ in PreferenceSync.shared.push(key: "autoplayInterval") }
             .confirmationDialog(
                 "Clear all library data? Comics in your Documents folder will also be deleted.",
                 isPresented: $showClearConfirm,
@@ -256,6 +273,10 @@ struct SettingsView: View {
                       " and \(restoredRuns) run\(restoredRuns == 1 ? "" : "s")."
             await MainActor.run {
                 isRestoring = false
+                // Invalidate all caches — restored comics may have different IDs
+                ThumbnailCache.shared.invalidateAll()
+                PageImageCache.shared.invalidate()
+                CBZReaderCache.shared.invalidateAll()
                 library.load()
                 restoreResult = msg
             }

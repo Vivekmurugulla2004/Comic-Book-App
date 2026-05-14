@@ -127,7 +127,7 @@ struct RunDetailView: View {
                     }
             }
             .sheet(item: Binding(
-                get: { detailComicId.map { RunDetailID($0) } },
+                get: { detailComicId.map { ComicSheetID(id: $0) } },
                 set: { detailComicId = $0?.id }
             )) { wrapper in
                 ComicDetailView(comicId: wrapper.id)
@@ -255,9 +255,4 @@ struct RunItemRow: View {
     }
 }
 
-// Identifiable wrapper
-private struct RunDetailID: Identifiable {
-    let id: Int64
-    init(_ id: Int64) { self.id = id }
-}
 

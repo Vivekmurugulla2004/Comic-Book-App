@@ -14,7 +14,12 @@ final class PageImageCache: @unchecked Sendable {
         return c
     }()
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in self?.cache.removeAllObjects() }
+    }
 
     static func key(filePath: String, index: Int) -> String { "\(filePath):\(index)" }
 
@@ -29,6 +34,33 @@ final class PageImageCache: @unchecked Sendable {
     }
 }
 
+// MARK: - Shared page loader
+
+/// Loads a single decoded page image, checking PageImageCache first.
+/// Returns nil for out-of-range indices or unsupported formats.
+/// Must be called off the main thread (Task.detached / background).
+func loadPageImage(comic: Comic, index: Int) async -> UIImage? {
+    let key = PageImageCache.key(filePath: comic.filePath, index: index)
+    if let cached = PageImageCache.shared.image(for: key) { return cached }
+    let filePath = comic.filePath
+    let ext      = comic.fileExtension
+    let url      = URL(fileURLWithPath: filePath)
+    let result: UIImage? = await Task.detached(priority: .userInitiated) {
+        switch ext {
+        case "cbz":                      return CBZReaderCache.shared.reader(for: filePath)?.image(at: index)
+        case "cbr":                      return DirectoryReaderCache.shared.reader(for: filePath)?.image(at: index)
+        case "pdf":                      return PDFPageCounter.image(url: url, at: index)
+        case "jpg", "jpeg", "png":       return index == 0 ? UIImage(contentsOfFile: filePath) : nil
+        default:                         return nil
+        }
+    }.value
+    if let result {
+        let cost = Int(result.size.width * result.scale * result.size.height * result.scale * 4)
+        PageImageCache.shared.setImage(result, for: key, cost: cost)
+    }
+    return result
+}
+
 // MARK: - CBZ Reader Cache
 
 /// Keeps up to 3 open CBZReader instances so sequential page loads don't re-open the ZIP archive.
@@ -39,7 +71,12 @@ final class CBZReaderCache: @unchecked Sendable {
     private let lock = NSLock()
     private let capacity = 3
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in self?.invalidateAll() }
+    }
 
     func reader(for path: String) -> CBZReader? {
         lock.lock(); defer { lock.unlock() }

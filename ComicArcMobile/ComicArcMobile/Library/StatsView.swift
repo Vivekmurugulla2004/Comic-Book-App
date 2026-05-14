@@ -165,13 +165,11 @@ struct StatsView: View {
             }
             .font(.subheadline)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.arcBorder)
-                    Capsule()
-                        .fill(color)
-                        .frame(width: total > 0 ? geo.size.width * CGFloat(count) / CGFloat(total) : 0)
-                }
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.arcBorder)
+                Capsule()
+                    .fill(color)
+                    .scaleEffect(x: total > 0 ? CGFloat(count) / CGFloat(total) : 0, y: 1, anchor: .leading)
             }
             .frame(height: 6)
         }
@@ -188,13 +186,11 @@ struct StatsView: View {
             }
             .font(.subheadline)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.arcBorder)
-                    Capsule()
-                        .fill(Color.arcGold)
-                        .frame(width: total > 0 ? geo.size.width * CGFloat(row.count) / CGFloat(total) : 0)
-                }
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.arcBorder)
+                Capsule()
+                    .fill(Color.arcGold)
+                    .scaleEffect(x: total > 0 ? CGFloat(row.count) / CGFloat(total) : 0, y: 1, anchor: .leading)
             }
             .frame(height: 6)
         }

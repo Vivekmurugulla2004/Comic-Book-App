@@ -79,7 +79,7 @@ struct LibraryView: View {
             }
             .navigationTitle(isSelecting ? "\(selectedIds.count) Selected" : navigationTitle)
             .background(Color.arcBg)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .large)
             .searchable(text: $library.searchText, prompt: "Search comics")
             .onChange(of: library.searchText) { _, _ in
                 if isSearching { library.loadSearchResults() } else { library.load() }
@@ -98,7 +98,7 @@ struct LibraryView: View {
             }
             .fileImporter(
                 isPresented: $showImporter,
-                allowedContentTypes: [.init(filenameExtension: "cbz")!, .pdf, .jpeg, .png],
+                allowedContentTypes: [.init(filenameExtension: "cbz")!, .init(filenameExtension: "cbr")!, .pdf, .jpeg, .png],
                 allowsMultipleSelection: true
             ) { result in
                 if case .success(let urls) = result { library.importFiles(urls) }
@@ -114,7 +114,7 @@ struct LibraryView: View {
             }
             .onAppear { library.load(); loadActiveRun() }
             .sheet(item: Binding(
-                get: { detailComicId.map { LibID($0) } },
+                get: { detailComicId.map { ComicSheetID(id: $0) } },
                 set: { detailComicId = $0?.id }
             )) { w in
                 ComicDetailView(comicId: w.id)
@@ -122,7 +122,7 @@ struct LibraryView: View {
                     .onDisappear { library.load() }
             }
             .sheet(item: Binding(
-                get: { continueComicId.map { LibID($0) } },
+                get: { continueComicId.map { ComicSheetID(id: $0) } },
                 set: { continueComicId = $0?.id }
             )) { w in
                 if let comic = DatabaseManager.shared.comic(id: w.id) {
@@ -866,13 +866,11 @@ struct LibraryView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.arcBorder)
-                                Capsule()
-                                    .fill(Color.arcGold)
-                                    .frame(width: geo.size.width * CGFloat(run.progressPercent))
-                            }
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.arcBorder)
+                            Capsule()
+                                .fill(Color.arcGold)
+                                .frame(width: 56 * CGFloat(run.progressPercent))
                         }
                         .frame(width: 56, height: 4)
                         Image(systemName: "chevron.right")
@@ -1012,16 +1010,10 @@ struct LibraryView: View {
     }
 
     private func bulkDelete() {
-        selectedIds.compactMap { db.comic(id: $0) }.forEach { library.delete($0) }
+        library.deleteBatch(selectedIds.compactMap { db.comic(id: $0) })
         loadActiveRun()
         exitSelection()
     }
-}
-
-// Identifiable wrapper
-private struct LibID: Identifiable {
-    let id: Int64
-    init(_ id: Int64) { self.id = id }
 }
 
 // MARK: - Continue Card
@@ -1035,12 +1027,10 @@ struct ContinueCard: View {
                 .frame(width: 90, height: 130)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(alignment: .bottom) {
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(Color.arcGold)
-                            .frame(width: geo.size.width * comic.progressPercent, height: 3)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    }
+                    Rectangle()
+                        .fill(Color.arcGold)
+                        .frame(height: 3)
+                        .scaleEffect(x: min(1, comic.progressPercent), y: 1, anchor: .leading)
                 }
             Text(comic.title)
                 .font(.caption2).lineLimit(2)
