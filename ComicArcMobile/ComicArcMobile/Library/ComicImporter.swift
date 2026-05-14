@@ -36,12 +36,15 @@ enum ComicImporter {
         return meta
     }
 
-    /// Returns page count without caching — call off main thread.
+    /// Returns page count — reuses CBZReaderCache to avoid reopening archives. Call off main thread.
     static func pageCount(url: URL) async -> Int {
         let ext = url.pathExtension.lowercased()
         switch ext {
         case "cbz":
-            return (try? CBZReader(url: url))?.pageCount ?? 0
+            return CBZReaderCache.shared.reader(for: url.path)?.pageCount ?? 0
+        case "cbr":
+            // For CBR the path is the extracted directory; count image files directly.
+            return DirectoryReaderCache.shared.reader(for: url.path)?.pageCount ?? 0
         case "pdf":
             return PDFPageCounter.count(url: url)
         case "jpg", "jpeg", "png", "gif", "webp":

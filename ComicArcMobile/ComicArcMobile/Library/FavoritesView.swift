@@ -36,7 +36,7 @@ struct FavoritesView: View {
             .background(Color.arcBg)
             .onAppear { load() }
             .sheet(item: Binding(
-                get: { detailComicId.map { FavID($0) } },
+                get: { detailComicId.map { ComicSheetID(id: $0) } },
                 set: { detailComicId = $0?.id }
             )) { wrapper in
                 ComicDetailView(comicId: wrapper.id)
@@ -51,7 +51,3 @@ struct FavoritesView: View {
     }
 }
 
-private struct FavID: Identifiable {
-    let id: Int64
-    init(_ id: Int64) { self.id = id }
-}

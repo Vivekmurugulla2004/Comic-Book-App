@@ -20,7 +20,12 @@ final class ThumbnailCache: @unchecked Sendable {
         return dir
     }()
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in self?.cache.removeAllObjects() }
+    }
 
     /// Returns a cover image, generating and caching it on a background thread if needed.
     func thumbnail(comicId: Int64) async -> UIImage? {
@@ -58,8 +63,9 @@ final class ThumbnailCache: @unchecked Sendable {
         let url = URL(fileURLWithPath: comic.filePath)
         switch comic.fileExtension {
         case "cbz":
-            // Reuse open archive if available — avoids reopening ZIP for sequential thumbnail loads
             return CBZReaderCache.shared.reader(for: comic.filePath)?.image(at: 0)
+        case "cbr":
+            return DirectoryReaderCache.shared.reader(for: comic.filePath)?.image(at: 0)
         case "pdf":
             return PDFPageCounter.firstPage(url: url)
         case "jpg", "jpeg", "png":

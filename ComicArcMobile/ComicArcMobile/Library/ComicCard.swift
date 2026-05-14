@@ -11,12 +11,10 @@ struct ComicCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(alignment: .bottom) {
                         if comic.pageCount > 0 && comic.progress > 0 {
-                            GeometryReader { geo in
-                                Rectangle()
-                                    .fill(comic.isFinished ? Color.green : Color.arcGold)
-                                    .frame(width: geo.size.width * comic.progressPercent, height: 4)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                            }
+                            Rectangle()
+                                .fill(comic.isFinished ? Color.green : Color.arcGold)
+                                .frame(height: 4)
+                                .scaleEffect(x: min(1, comic.progressPercent), y: 1, anchor: .leading)
                         }
                     }
 

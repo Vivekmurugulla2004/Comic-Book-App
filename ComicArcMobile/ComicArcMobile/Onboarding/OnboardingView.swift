@@ -29,7 +29,7 @@ struct OnboardingView: View {
         }
         .fileImporter(
             isPresented: $showImporter,
-            allowedContentTypes: [.init(filenameExtension: "cbz")!, .pdf, .jpeg, .png],
+            allowedContentTypes: [.init(filenameExtension: "cbz")!, .init(filenameExtension: "cbr")!, .pdf, .jpeg, .png],
             allowsMultipleSelection: true
         ) { result in
             if case .success(let urls) = result {
@@ -37,7 +37,6 @@ struct OnboardingView: View {
             }
             finish()
         }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Pages
@@ -102,7 +101,7 @@ struct OnboardingView: View {
                 Text("Add Your Comics")
                     .font(.title2.bold())
                     .foregroundStyle(.white)
-                Text("Import individual CBZ or PDF files, or tap + and choose Import Folder to bring in an entire collection at once.")
+                Text("Import CBZ, CBR, or PDF files, or tap + and choose Import Folder to bring in an entire collection at once.")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
