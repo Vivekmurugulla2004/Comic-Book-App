@@ -14,6 +14,15 @@ struct RunDetailView: View {
 
     private let db = DatabaseManager.shared
 
+    private func openComic(_ comic: Comic, context: [Comic]) {
+        if FileManager.default.fileExists(atPath: comic.filePath) {
+            readerRunContext = context
+            readerComic = comic
+        } else {
+            missingFileComic = comic
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -29,13 +38,7 @@ struct RunDetailView: View {
                         if let firstUnfinished = items.first(where: { !$0.isFinished }) {
                             Section {
                                 Button {
-                                    let comic = firstUnfinished.comic
-                                    if FileManager.default.fileExists(atPath: comic.filePath) {
-                                        readerRunContext = items.map(\.comic)
-                                        readerComic = comic
-                                    } else {
-                                        missingFileComic = comic
-                                    }
+                                    openComic(firstUnfinished.comic, context: items.map(\.comic))
                                 } label: {
                                     HStack {
                                         Image(systemName: "play.fill")
@@ -66,12 +69,7 @@ struct RunDetailView: View {
                                 RunItemRow(item: item,
                                            allComics: items.map(\.comic),
                                            onRead: { comic, context in
-                                               if FileManager.default.fileExists(atPath: comic.filePath) {
-                                                   readerRunContext = context
-                                                   readerComic = comic
-                                               } else {
-                                                   missingFileComic = comic
-                                               }
+                                               openComic(comic, context: context)
                                            },
                                            onDetail: { detailComicId = item.comic.id },
                                            onNotesChanged: { notes in

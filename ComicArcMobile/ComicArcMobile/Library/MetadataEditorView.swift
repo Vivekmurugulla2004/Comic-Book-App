@@ -107,6 +107,7 @@ private struct LabeledField: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 80, alignment: .leading)
             TextField(label, text: $text)
+                .accessibilityLabel(label)
         }
     }
 }

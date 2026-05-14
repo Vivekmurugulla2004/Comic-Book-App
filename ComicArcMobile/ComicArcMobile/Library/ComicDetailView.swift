@@ -18,6 +18,14 @@ struct ComicDetailView: View {
 
     private let db = DatabaseManager.shared
 
+    private func openComic(_ comic: Comic) {
+        if FileManager.default.fileExists(atPath: comic.filePath) {
+            showReader = true
+        } else {
+            showMissingFileAlert = true
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -107,13 +115,7 @@ struct ComicDetailView: View {
                             }
                     }
 
-                    Button {
-                        if FileManager.default.fileExists(atPath: comic.filePath) {
-                            showReader = true
-                        } else {
-                            showMissingFileAlert = true
-                        }
-                    } label: {
+                    Button { openComic(comic) } label: {
                         Label(comic.isStarted ? "Continue Reading" : "Read",
                               systemImage: comic.isStarted ? "book.fill" : "book")
                             .font(.headline)
@@ -167,13 +169,7 @@ struct ComicDetailView: View {
                         .shadow(radius: 12)
                 }
 
-                Button {
-                    if FileManager.default.fileExists(atPath: comic.filePath) {
-                        showReader = true
-                    } else {
-                        showMissingFileAlert = true
-                    }
-                } label: {
+                Button { openComic(comic) } label: {
                     Label(comic.isStarted ? "Continue Reading" : "Read",
                           systemImage: comic.isStarted ? "book.fill" : "book")
                         .font(.headline)

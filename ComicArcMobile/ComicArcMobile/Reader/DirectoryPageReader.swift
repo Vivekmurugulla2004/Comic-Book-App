@@ -3,7 +3,7 @@ import UIKit
 /// Reads comic pages from a flat directory of image files (extracted CBR content).
 /// Matches the image(at:)/pageCount interface used by CBZReader.
 final class DirectoryPageReader: @unchecked Sendable {
-    nonisolated(unsafe) private let imagePaths: [String]
+    private let imagePaths: [String]
     nonisolated var pageCount: Int { imagePaths.count }
 
     private static let imageExts: Set<String> = ["jpg", "jpeg", "png", "gif", "webp"]

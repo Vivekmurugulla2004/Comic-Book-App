@@ -7,7 +7,6 @@ struct Run: Identifiable {
     var createdAt: Date
     var itemCount: Int
     var completedCount: Int
-    var firstUnfinishedComicId: Int64?
 
     var progressPercent: Double {
         guard itemCount > 0 else { return 0 }

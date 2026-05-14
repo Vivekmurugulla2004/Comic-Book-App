@@ -6,7 +6,7 @@ struct ImportProgress {
     var total: Int = 0
     var currentFile: String = ""
     var failures: Int = 0
-    var isScanning: Bool = false  // true during folder scan before total is known
+    var isScanning: Bool = false
     var isActive: Bool { total > 0 || isScanning }
 }
 
@@ -31,52 +31,76 @@ final class LibraryViewModel: ObservableObject {
 
     private let db = DatabaseManager.shared
     private var importTask: Task<Void, Never>?
+    private var progressTask: Task<Void, Never>?
 
     // MARK: - Load
 
     func load() {
-        publishers   = db.publishers()
-        inProgress   = db.inProgress()
-        allTags      = db.allTags()
-        characterGroups = db.characterGroups(
-            publisher: selectedPublisher == "All" ? nil : selectedPublisher
-        )
+        let pub  = selectedPublisher == "All" ? nil : selectedPublisher
+        let tag  = selectedTag
+        let q    = searchText.isEmpty ? nil : searchText
+        let sort = sortOrder
 
-        if let tag = selectedTag {
-            comics = db.comics(withTag: tag)
-        } else {
-            comics = db.allComics(
-                publisher: selectedPublisher == "All" ? nil : selectedPublisher,
-                search: searchText.isEmpty ? nil : searchText,
-                sortOrder: sortOrder
-            )
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let publishers      = self.db.publishers()
+            let inProgress      = self.db.inProgress()
+            let allTags         = self.db.allTags()
+            let characterGroups = self.db.characterGroups(publisher: pub)
+            let comics: [Comic] = tag != nil
+                ? self.db.comics(withTag: tag!)
+                : self.db.allComics(publisher: pub, search: q, sortOrder: sort)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.publishers      = publishers
+                self.inProgress      = inProgress
+                self.allTags         = allTags
+                self.characterGroups = characterGroups
+                self.comics          = comics
+            }
         }
     }
 
     func loadSeries(for character: String) {
-        seriesGroups = db.seriesGroups(
-            character: character,
-            publisher: selectedPublisher == "All" ? nil : selectedPublisher
-        )
+        let pub = selectedPublisher == "All" ? nil : selectedPublisher
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let groups = self.db.seriesGroups(character: character, publisher: pub)
+            await MainActor.run { self.seriesGroups = groups }
+        }
     }
 
     func loadIssues(character: String?, series: String) {
-        comics = db.allComics(
-            publisher: selectedPublisher == "All" ? nil : selectedPublisher,
-            character: character,
-            series: series,
-            nullCharacterOnly: character == nil,
-            sortOrder: sortOrder
-        )
+        let pub  = selectedPublisher == "All" ? nil : selectedPublisher
+        let sort = sortOrder
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let result = self.db.allComics(
+                publisher: pub, character: character, series: series,
+                nullCharacterOnly: character == nil, sortOrder: sort
+            )
+            await MainActor.run { self.comics = result }
+        }
     }
 
     func loadSearchResults() {
         guard !searchText.isEmpty else { load(); return }
-        comics = db.allComics(
-            publisher: selectedPublisher == "All" ? nil : selectedPublisher,
-            search: searchText,
-            sortOrder: sortOrder
-        )
+        let pub  = selectedPublisher == "All" ? nil : selectedPublisher
+        let q    = searchText
+        let sort = sortOrder
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let result = self.db.allComics(publisher: pub, search: q, sortOrder: sort)
+            await MainActor.run { self.comics = result }
+        }
+    }
+
+    func refreshInProgress() {
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let result = self.db.inProgress()
+            await MainActor.run { self.inProgress = result }
+        }
     }
 
     // MARK: - Import
@@ -89,15 +113,14 @@ final class LibraryViewModel: ObservableObject {
 
     func importFiles(_ urls: [URL]) {
         importTask?.cancel()
-        let count = urls.count
-        importProgress = ImportProgress(done: 0, total: count, currentFile: "", failures: 0)
+        importProgress = ImportProgress(done: 0, total: urls.count, currentFile: "", failures: 0)
         importTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             var failures = 0
             for (i, url) in urls.enumerated() {
                 guard !Task.isCancelled else { break }
                 await MainActor.run {
-                    self.importProgress.done = i
+                    self.importProgress.done        = i
                     self.importProgress.currentFile = url.lastPathComponent
                 }
                 let ok = await self.importFile(url)
@@ -111,8 +134,6 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
-    /// Recursively scans a user-selected folder and imports all supported comic files,
-    /// preserving the subfolder structure so ComicImporter.parse() can derive metadata.
     func importFolder(_ folderURL: URL) {
         importTask?.cancel()
         importProgress = ImportProgress(isScanning: true)
@@ -122,7 +143,6 @@ final class LibraryViewModel: ObservableObject {
             let accessing = folderURL.startAccessingSecurityScopedResource()
             defer { if accessing { folderURL.stopAccessingSecurityScopedResource() } }
 
-            // Phase 1: scan recursively
             let supported = Set(["cbz", "cbr", "pdf", "jpg", "jpeg", "png"])
             guard let enumerator = FileManager.default.enumerator(
                 at: folderURL,
@@ -140,15 +160,15 @@ final class LibraryViewModel: ObservableObject {
             files.sort { $0.path < $1.path }
 
             await MainActor.run {
-                self.importProgress = ImportProgress(done: 0, total: files.count, currentFile: "", failures: 0)
+                self.importProgress = ImportProgress(done: 0, total: files.count,
+                                                     currentFile: "", failures: 0)
             }
 
-            // Phase 2: import — the folder's security scope covers all children
             var failures = 0
             for (i, fileURL) in files.enumerated() {
                 guard !Task.isCancelled else { break }
                 await MainActor.run {
-                    self.importProgress.done = i
+                    self.importProgress.done        = i
                     self.importProgress.currentFile = fileURL.lastPathComponent
                 }
                 let ok = await self.importFileFromFolder(fileURL, folderRoot: folderURL)
@@ -163,10 +183,10 @@ final class LibraryViewModel: ObservableObject {
         }
     }
 
-    // Preserves relative directory structure so ComicImporter derives publisher/character/series from path.
+    // MARK: - Private import helpers
+
     private func importFileFromFolder(_ source: URL, folderRoot: URL) async -> Bool {
         if source.pathExtension.lowercased() == "cbr" {
-            // Build relative path hint (preserving folder structure) with .cbr directory name
             var rel = source.path
             let rootPath = folderRoot.path
             if rel.hasPrefix(rootPath) {
@@ -195,11 +215,8 @@ final class LibraryViewModel: ObservableObject {
 
         let dest = docs.appendingPathComponent(relative)
         try? FileManager.default.createDirectory(
-            at: dest.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+            at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        // Skip if already catalogued
         if db.comicId(forFilePath: dest.path) != nil { return true }
 
         if !FileManager.default.fileExists(atPath: dest.path) {
@@ -211,27 +228,8 @@ final class LibraryViewModel: ObservableObject {
             }
         }
 
-        let meta      = ComicImporter.parse(url: dest)
-        let pageCount = await ComicImporter.pageCount(url: dest)
-
-        let ext = dest.pathExtension.lowercased()
-        if pageCount == 0 && (ext == "cbz" || ext == "pdf") { return false }
-
-        db.insertComic(
-            title:       meta.title,
-            filePath:    dest.path,
-            publisher:   meta.publisher,
-            character:   meta.character,
-            series:      meta.series,
-            issueNumber: meta.issueNumber,
-            pageCount:   pageCount,
-            writer:      meta.writer,
-            summary:     meta.summary
-        )
-        return true
+        return await finalizeImport(dest: dest)
     }
-
-    // MARK: - CBR Import
 
     private func importCBR(_ source: URL, relativePathHint: String? = nil) async -> Bool {
         let docs = FileManager.default
@@ -239,7 +237,6 @@ final class LibraryViewModel: ObservableObject {
             .appendingPathComponent("Comics")
         try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
 
-        // Extracted folder has the same base name as the CBR but stored as a directory with .cbr extension.
         let folderName = relativePathHint ?? source.deletingPathExtension().lastPathComponent + ".cbr"
         let destDir    = docs.appendingPathComponent(folderName)
 
@@ -251,7 +248,6 @@ final class LibraryViewModel: ObservableObject {
                 try RARExtractor.extract(archiveURL: source, destination: destDir)
             }.value
         } catch {
-            // Clean up any partially-extracted files so we don't leave orphan data on disk
             try? FileManager.default.removeItem(at: destDir)
             await MainActor.run { self.importError = error.localizedDescription }
             return false
@@ -278,8 +274,7 @@ final class LibraryViewModel: ObservableObject {
         defer { if accessing { source.stopAccessingSecurityScopedResource() } }
 
         if source.pathExtension.lowercased() == "cbr" {
-            let ok = await importCBR(source)
-            return ok
+            return await importCBR(source)
         }
 
         let docs = FileManager.default
@@ -289,7 +284,6 @@ final class LibraryViewModel: ObservableObject {
 
         let dest = docs.appendingPathComponent(source.lastPathComponent)
 
-        // Skip if already catalogued by path
         if db.comicId(forFilePath: dest.path) != nil { return true }
 
         if !FileManager.default.fileExists(atPath: dest.path) {
@@ -301,12 +295,19 @@ final class LibraryViewModel: ObservableObject {
             }
         }
 
+        return await finalizeImport(dest: dest)
+    }
+
+    private func finalizeImport(dest: URL) async -> Bool {
         let meta      = ComicImporter.parse(url: dest)
         let pageCount = await ComicImporter.pageCount(url: dest)
-
-        let ext = dest.pathExtension.lowercased()
-        if pageCount == 0 && (ext == "cbz" || ext == "pdf") { return false }
-
+        let ext       = dest.pathExtension.lowercased()
+        if pageCount == 0 && (ext == "cbz" || ext == "pdf") {
+            await MainActor.run {
+                self.importError = "\(dest.lastPathComponent) appears to be empty or unreadable."
+            }
+            return false
+        }
         db.insertComic(
             title:       meta.title,
             filePath:    dest.path,
@@ -352,6 +353,13 @@ final class LibraryViewModel: ObservableObject {
     }
 
     func updateProgress(_ comic: Comic, page: Int) {
-        db.updateProgress(comicId: comic.id, page: page)
+        progressTask?.cancel()
+        let comicId = comic.id
+        progressTask = Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            self.db.updateProgress(comicId: comicId, page: page)
+        }
     }
 }

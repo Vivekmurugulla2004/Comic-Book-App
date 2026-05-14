@@ -29,7 +29,7 @@ final class PageImageCache: @unchecked Sendable {
         cache.setObject(img, forKey: key as NSString, cost: cost)
     }
 
-    func invalidate() {
+    func invalidateAll() {
         cache.removeAllObjects()
     }
 }

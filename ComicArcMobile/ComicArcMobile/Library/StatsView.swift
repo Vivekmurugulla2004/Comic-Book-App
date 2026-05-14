@@ -120,20 +120,18 @@ struct StatsView: View {
             .navigationTitle("Stats")
             .scrollContentBackground(.hidden)
             .background(Color.arcBg)
-            .onAppear { loadStats() }
-            .refreshable { loadStats() }
+            .task { await loadStats() }
+            .refreshable { await loadStats() }
         }
     }
 
     // MARK: - Data
 
-    private func loadStats() {
-        Task {
-            let loaded = await Task.detached(priority: .utility) {
-                LibraryStats.load()
-            }.value
-            stats = loaded
-        }
+    private func loadStats() async {
+        let loaded = await Task.detached(priority: .utility) {
+            LibraryStats.load()
+        }.value
+        stats = loaded
     }
 
     // MARK: - Subviews
