@@ -21,6 +21,12 @@ struct SettingsView: View {
         .urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Comics").path
 
+    private func clearAllCaches() {
+        ThumbnailCache.shared.invalidateAll()
+        PageImageCache.shared.invalidateAll()
+        CBZReaderCache.shared.invalidateAll()
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -273,10 +279,7 @@ struct SettingsView: View {
                       " and \(restoredRuns) run\(restoredRuns == 1 ? "" : "s")."
             await MainActor.run {
                 isRestoring = false
-                // Invalidate all caches — restored comics may have different IDs
-                ThumbnailCache.shared.invalidateAll()
-                PageImageCache.shared.invalidate()
-                CBZReaderCache.shared.invalidateAll()
+                clearAllCaches()
                 library.load()
                 restoreResult = msg
             }
@@ -299,10 +302,7 @@ struct SettingsView: View {
             .appendingPathComponent("ComicArc/covers")
         try? FileManager.default.removeItem(at: coversDir)
 
-        ThumbnailCache.shared.invalidateAll()
-        PageImageCache.shared.invalidate()
-        CBZReaderCache.shared.invalidateAll()
-
+        clearAllCaches()
         library.load()
     }
 

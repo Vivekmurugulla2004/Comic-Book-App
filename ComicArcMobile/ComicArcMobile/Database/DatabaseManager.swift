@@ -6,7 +6,11 @@ private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.sel
 
 final class DatabaseManager {
     static let shared = DatabaseManager()
+
+    private let queue = DispatchQueue(label: "com.comicarc.db", qos: .userInitiated)
     private var db: OpaquePointer?
+
+    private(set) var isDatabaseAvailable = false
 
     private init() {
         openDatabase()
@@ -24,9 +28,14 @@ final class DatabaseManager {
     }
 
     private func openDatabase() {
-        guard sqlite3_open(dbURL().path, &db) == SQLITE_OK else {
+        let result = sqlite3_open(dbURL().path, &db)
+        guard result == SQLITE_OK else {
+            let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
+            assertionFailure("DatabaseManager: sqlite3_open failed — \(msg)")
+            db = nil
             return
         }
+        isDatabaseAvailable = true
         exec("PRAGMA foreign_keys = ON")
         exec("PRAGMA journal_mode = WAL")
     }
@@ -53,15 +62,14 @@ final class DatabaseManager {
         exec("ALTER TABLE comics ADD COLUMN writer  TEXT")
         exec("ALTER TABLE comics ADD COLUMN summary TEXT")
 
-        // Indexes for frequently-filtered and sorted columns
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_publisher   ON comics(publisher)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_character   ON comics(character)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_series      ON comics(series)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_title       ON comics(title)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_date_added    ON comics(date_added)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_is_favorite   ON comics(is_favorite)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_reading_list  ON comics(in_reading_list)")
-        exec("CREATE INDEX IF NOT EXISTS idx_comics_rating        ON comics(rating)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_publisher    ON comics(publisher)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_character    ON comics(character)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_series       ON comics(series)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_title        ON comics(title)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_date_added   ON comics(date_added)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_is_favorite  ON comics(is_favorite)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_reading_list ON comics(in_reading_list)")
+        exec("CREATE INDEX IF NOT EXISTS idx_comics_rating       ON comics(rating)")
         exec("""
         CREATE TABLE IF NOT EXISTS reading_progress (
             comic_id     INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE,
@@ -141,14 +149,16 @@ final class DatabaseManager {
             conds.append("c.character = ?")
             args.append(chr)
         }
-        if let ser = series                  { conds.append("c.series = ?");      args.append(ser) }
+        if let ser = series { conds.append("c.series = ?"); args.append(ser) }
         if let q = search, !q.isEmpty {
             conds.append("(c.title LIKE ? OR c.series LIKE ?)")
             args += ["%\(q)%", "%\(q)%"]
         }
-        if favoritesOnly    { conds.append("c.is_favorite = 1") }
-        if readingListOnly  { conds.append("c.in_reading_list = 1") }
+        if favoritesOnly   { conds.append("c.is_favorite = 1") }
+        if readingListOnly { conds.append("c.in_reading_list = 1") }
 
+        // '' as tags: comic.tags is not populated from list queries for performance.
+        // Use db.tags(for:) when per-comic tag data is needed (detail views, export).
         let sql = """
             SELECT c.id, c.title, c.file_path, c.publisher, c.character, c.series,
                    c.issue_number, c.page_count, c.rating, c.is_favorite, c.in_reading_list,
@@ -191,15 +201,18 @@ final class DatabaseManager {
     }
 
     func publishers() -> [String] {
-        var out: [String] = []
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT DISTINCT publisher FROM comics ORDER BY publisher", -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                if let s = colText(stmt, 0) { out.append(s) }
+        queue.sync {
+            var out: [String] = []
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, "SELECT DISTINCT publisher FROM comics ORDER BY publisher",
+                                  -1, &stmt, nil) == SQLITE_OK {
+                while sqlite3_step(stmt) == SQLITE_ROW {
+                    if let s = colText(stmt, 0) { out.append(s) }
+                }
             }
+            sqlite3_finalize(stmt)
+            return out
         }
-        sqlite3_finalize(stmt)
-        return out
     }
 
     // MARK: - Query: Groups
@@ -252,47 +265,51 @@ final class DatabaseManager {
     func insertComic(title: String, filePath: String, publisher: String,
                      character: String?, series: String, issueNumber: String?,
                      pageCount: Int, writer: String? = nil, summary: String? = nil) -> Int64? {
-        let sql = """
-            INSERT OR IGNORE INTO comics
-              (title, file_path, publisher, character, series, issue_number, page_count, writer, summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        sqlite3_bind_text(stmt, 1, title,      -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, filePath,   -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 3, publisher,  -1, SQLITE_TRANSIENT)
-        if let c = character   { sqlite3_bind_text(stmt, 4, c, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 4) }
-        sqlite3_bind_text(stmt, 5, series,     -1, SQLITE_TRANSIENT)
-        if let n = issueNumber { sqlite3_bind_text(stmt, 6, n, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 6) }
-        sqlite3_bind_int(stmt,  7, Int32(pageCount))
-        if let w = writer      { sqlite3_bind_text(stmt, 8, w, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 8) }
-        if let s = summary     { sqlite3_bind_text(stmt, 9, s, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 9) }
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-        let rowid = sqlite3_last_insert_rowid(db)
-        return rowid > 0 ? rowid : nil
+        queue.sync {
+            let sql = """
+                INSERT OR IGNORE INTO comics
+                  (title, file_path, publisher, character, series, issue_number, page_count, writer, summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, filePath,  -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, publisher, -1, SQLITE_TRANSIENT)
+            if let c = character   { sqlite3_bind_text(stmt, 4, c, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 4) }
+            sqlite3_bind_text(stmt, 5, series, -1, SQLITE_TRANSIENT)
+            if let n = issueNumber { sqlite3_bind_text(stmt, 6, n, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 6) }
+            sqlite3_bind_int(stmt,  7, Int32(pageCount))
+            if let w = writer  { sqlite3_bind_text(stmt, 8, w, -1, SQLITE_TRANSIENT) }
+            else               { sqlite3_bind_null(stmt, 8) }
+            if let s = summary { sqlite3_bind_text(stmt, 9, s, -1, SQLITE_TRANSIENT) }
+            else               { sqlite3_bind_null(stmt, 9) }
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+            let rowid = sqlite3_last_insert_rowid(db)
+            return rowid > 0 ? rowid : nil
+        }
     }
 
     func updateProgress(comicId: Int64, page: Int) {
-        let sql = """
-            INSERT INTO reading_progress (comic_id, current_page)
-            VALUES (?, ?)
-            ON CONFLICT(comic_id) DO UPDATE
-              SET current_page = excluded.current_page,
-                  updated_at   = datetime('now')
-        """
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_int64(stmt, 1, comicId)
-            sqlite3_bind_int(stmt,  2, Int32(page))
-            sqlite3_step(stmt)
+        queue.sync {
+            let sql = """
+                INSERT INTO reading_progress (comic_id, current_page)
+                VALUES (?, ?)
+                ON CONFLICT(comic_id) DO UPDATE
+                  SET current_page = excluded.current_page,
+                      updated_at   = datetime('now')
+            """
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_int64(stmt, 1, comicId)
+                sqlite3_bind_int(stmt,  2, Int32(page))
+                sqlite3_step(stmt)
+            }
+            sqlite3_finalize(stmt)
         }
-        sqlite3_finalize(stmt)
     }
 
     func setFavorite(_ id: Int64, _ value: Bool) {
@@ -317,71 +334,79 @@ final class DatabaseManager {
         prepared("DELETE FROM comics WHERE id = ?") { sqlite3_bind_int64($0, 1, id) }
     }
 
-    /// Upserts a comic record for backup restore.
-    /// On conflict (same file_path) preserves existing title/series/publisher from the DB
-    /// but restores ratings, favorites, reading list, and page count.
     @discardableResult
     func restoreComic(title: String, filePath: String, publisher: String, character: String?,
                       series: String, issueNumber: String?, pageCount: Int,
                       rating: Int, isFavorite: Bool, inReadingList: Bool) -> Int64? {
-        let sql = """
-            INSERT INTO comics
-              (title, file_path, publisher, character, series, issue_number, page_count, rating, is_favorite, in_reading_list)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(file_path) DO UPDATE SET
-              rating          = MAX(excluded.rating,          comics.rating),
-              is_favorite     = MAX(excluded.is_favorite,     comics.is_favorite),
-              in_reading_list = MAX(excluded.in_reading_list, comics.in_reading_list),
-              page_count      = CASE WHEN excluded.page_count > 0 THEN excluded.page_count ELSE comics.page_count END
-        """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
-        sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, filePath,  -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 3, publisher, -1, SQLITE_TRANSIENT)
-        if let c = character { sqlite3_bind_text(stmt, 4, c, -1, SQLITE_TRANSIENT) }
-        else                 { sqlite3_bind_null(stmt, 4) }
-        sqlite3_bind_text(stmt, 5, series, -1, SQLITE_TRANSIENT)
-        if let n = issueNumber { sqlite3_bind_text(stmt, 6, n, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 6) }
-        sqlite3_bind_int(stmt,  7, Int32(pageCount))
-        sqlite3_bind_int(stmt,  8, Int32(rating))
-        sqlite3_bind_int(stmt,  9, isFavorite    ? 1 : 0)
-        sqlite3_bind_int(stmt, 10, inReadingList ? 1 : 0)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-        // sqlite3_last_insert_rowid returns the rowid of the upserted row
-        let rowid = sqlite3_last_insert_rowid(db)
-        if rowid > 0 { return rowid }
-        // Fallback: look up by file path (handles the DO UPDATE path on some SQLite builds)
-        return comicId(forFilePath: filePath)
+        queue.sync {
+            let sql = """
+                INSERT INTO comics
+                  (title, file_path, publisher, character, series, issue_number, page_count, rating, is_favorite, in_reading_list)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(file_path) DO UPDATE SET
+                  rating          = MAX(excluded.rating,          comics.rating),
+                  is_favorite     = MAX(excluded.is_favorite,     comics.is_favorite),
+                  in_reading_list = MAX(excluded.in_reading_list, comics.in_reading_list),
+                  page_count      = CASE WHEN excluded.page_count > 0 THEN excluded.page_count ELSE comics.page_count END
+            """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, filePath,  -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, publisher, -1, SQLITE_TRANSIENT)
+            if let c = character   { sqlite3_bind_text(stmt, 4, c, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 4) }
+            sqlite3_bind_text(stmt, 5, series, -1, SQLITE_TRANSIENT)
+            if let n = issueNumber { sqlite3_bind_text(stmt, 6, n, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 6) }
+            sqlite3_bind_int(stmt,  7, Int32(pageCount))
+            sqlite3_bind_int(stmt,  8, Int32(rating))
+            sqlite3_bind_int(stmt,  9, isFavorite    ? 1 : 0)
+            sqlite3_bind_int(stmt, 10, inReadingList ? 1 : 0)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+            let rowid = sqlite3_last_insert_rowid(db)
+            if rowid > 0 { return rowid }
+            // ON CONFLICT path — row already existed, fetch its id without re-entering queue
+            var s2: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "SELECT id FROM comics WHERE file_path = ?",
+                                     -1, &s2, nil) == SQLITE_OK else { return nil }
+            sqlite3_bind_text(s2, 1, filePath, -1, SQLITE_TRANSIENT)
+            let existing = sqlite3_step(s2) == SQLITE_ROW ? sqlite3_column_int64(s2, 0) : nil
+            sqlite3_finalize(s2)
+            return existing
+        }
     }
 
     func comicId(forFilePath filePath: String) -> Int64? {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT id FROM comics WHERE file_path = ?",
-                                 -1, &stmt, nil) == SQLITE_OK else { return nil }
-        sqlite3_bind_text(stmt, 1, filePath, -1, SQLITE_TRANSIENT)
-        let result = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int64(stmt, 0) : nil
-        sqlite3_finalize(stmt)
-        return result
+        queue.sync {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "SELECT id FROM comics WHERE file_path = ?",
+                                     -1, &stmt, nil) == SQLITE_OK else { return nil }
+            sqlite3_bind_text(stmt, 1, filePath, -1, SQLITE_TRANSIENT)
+            let result = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int64(stmt, 0) : nil
+            sqlite3_finalize(stmt)
+            return result
+        }
     }
 
     func updateMetadata(_ id: Int64, title: String, publisher: String, character: String?,
                         series: String, issueNumber: String?) {
-        var stmt: OpaquePointer?
-        let sql = "UPDATE comics SET title=?, publisher=?, character=?, series=?, issue_number=? WHERE id=?"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-        sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, publisher, -1, SQLITE_TRANSIENT)
-        if let c = character { sqlite3_bind_text(stmt, 3, c, -1, SQLITE_TRANSIENT) }
-        else                 { sqlite3_bind_null(stmt, 3) }
-        sqlite3_bind_text(stmt, 4, series, -1, SQLITE_TRANSIENT)
-        if let n = issueNumber { sqlite3_bind_text(stmt, 5, n, -1, SQLITE_TRANSIENT) }
-        else                   { sqlite3_bind_null(stmt, 5) }
-        sqlite3_bind_int64(stmt, 6, id)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
+        queue.sync {
+            var stmt: OpaquePointer?
+            let sql = "UPDATE comics SET title=?, publisher=?, character=?, series=?, issue_number=? WHERE id=?"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            sqlite3_bind_text(stmt, 1, title,     -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, publisher, -1, SQLITE_TRANSIENT)
+            if let c = character   { sqlite3_bind_text(stmt, 3, c, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 3) }
+            sqlite3_bind_text(stmt, 4, series, -1, SQLITE_TRANSIENT)
+            if let n = issueNumber { sqlite3_bind_text(stmt, 5, n, -1, SQLITE_TRANSIENT) }
+            else                   { sqlite3_bind_null(stmt, 5) }
+            sqlite3_bind_int64(stmt, 6, id)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
     }
 
     // MARK: - Tags
@@ -400,45 +425,52 @@ final class DatabaseManager {
     }
 
     func tags(for comicId: Int64) -> [Tag] {
-        let sql = """
-            SELECT t.id, t.name, 0 as cnt FROM tags t
-            JOIN comic_tags ct ON t.id = ct.tag_id
-            WHERE ct.comic_id = ?
-            ORDER BY t.name
-        """
-        var out: [Tag] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        sqlite3_bind_int64(stmt, 1, comicId)
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            out.append(Tag(id: sqlite3_column_int64(stmt, 0), name: colText(stmt, 1) ?? "", comicCount: 0))
+        queue.sync {
+            let sql = """
+                SELECT t.id, t.name FROM tags t
+                JOIN comic_tags ct ON t.id = ct.tag_id
+                WHERE ct.comic_id = ?
+                ORDER BY t.name
+            """
+            var out: [Tag] = []
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            sqlite3_bind_int64(stmt, 1, comicId)
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                out.append(Tag(id: sqlite3_column_int64(stmt, 0),
+                               name: colText(stmt, 1) ?? "",
+                               comicCount: 0))
+            }
+            sqlite3_finalize(stmt)
+            return out
         }
-        sqlite3_finalize(stmt)
-        return out
     }
 
     func setTags(for comicId: Int64, names: [String]) {
-        prepared("DELETE FROM comic_tags WHERE comic_id = ?") { sqlite3_bind_int64($0, 1, comicId) }
-        for name in names {
-            let trimmed = name.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-            // Insert tag using parameterized binding — no string interpolation
-            var stmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO tags (name) VALUES (?)", -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, trimmed, -1, SQLITE_TRANSIENT)
-                sqlite3_step(stmt)
+        queue.sync {
+            prepared_unsafe("DELETE FROM comic_tags WHERE comic_id = ?") {
+                sqlite3_bind_int64($0, 1, comicId)
             }
-            sqlite3_finalize(stmt)
-            // Link tag to comic
-            stmt = nil
-            if sqlite3_prepare_v2(db,
-                "INSERT OR IGNORE INTO comic_tags (comic_id, tag_id) SELECT ?, id FROM tags WHERE name = ?",
-                -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_int64(stmt, 1, comicId)
-                sqlite3_bind_text(stmt, 2, trimmed, -1, SQLITE_TRANSIENT)
-                sqlite3_step(stmt)
+            for name in names {
+                let trimmed = name.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { continue }
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO tags (name) VALUES (?)",
+                                      -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_text(stmt, 1, trimmed, -1, SQLITE_TRANSIENT)
+                    sqlite3_step(stmt)
+                }
+                sqlite3_finalize(stmt)
+                stmt = nil
+                if sqlite3_prepare_v2(db,
+                    "INSERT OR IGNORE INTO comic_tags (comic_id, tag_id) SELECT ?, id FROM tags WHERE name = ?",
+                    -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_int64(stmt, 1, comicId)
+                    sqlite3_bind_text(stmt, 2, trimmed, -1, SQLITE_TRANSIENT)
+                    sqlite3_step(stmt)
+                }
+                sqlite3_finalize(stmt)
             }
-            sqlite3_finalize(stmt)
         }
     }
 
@@ -465,9 +497,7 @@ final class DatabaseManager {
             SELECT r.id, r.title, r.description, r.created_at,
                    COUNT(ri.id) as item_count,
                    SUM(CASE WHEN c.page_count > 0 AND COALESCE(rp.current_page,0) >= c.page_count - 1
-                            THEN 1 ELSE 0 END) as completed,
-                   MIN(CASE WHEN (c.page_count = 0 OR COALESCE(rp.current_page,0) < c.page_count - 1)
-                            THEN c.id END) as first_unfinished
+                            THEN 1 ELSE 0 END) as completed
             FROM runs r
             LEFT JOIN run_items ri ON r.id = ri.run_id
             LEFT JOIN comics c ON ri.comic_id = c.id
@@ -476,16 +506,13 @@ final class DatabaseManager {
             ORDER BY r.created_at DESC
         """
         return rows(sql) { stmt in
-            let firstId = sqlite3_column_type(stmt, 6) != SQLITE_NULL
-                          ? sqlite3_column_int64(stmt, 6) : nil
-            return Run(
-                id: sqlite3_column_int64(stmt, 0),
-                title: colText(stmt, 1) ?? "",
-                description: colText(stmt, 2) ?? "",
-                createdAt: Date(),
-                itemCount: Int(sqlite3_column_int(stmt, 4)),
-                completedCount: Int(sqlite3_column_int(stmt, 5)),
-                firstUnfinishedComicId: firstId
+            Run(
+                id:             sqlite3_column_int64(stmt, 0),
+                title:          colText(stmt, 1) ?? "",
+                description:    colText(stmt, 2) ?? "",
+                createdAt:      Date(),
+                itemCount:      Int(sqlite3_column_int(stmt, 4)),
+                completedCount: Int(sqlite3_column_int(stmt, 5))
             )
         }
     }
@@ -495,7 +522,7 @@ final class DatabaseManager {
             SELECT ri.id, ri.run_id, ri.position, ri.notes,
                    c.id, c.title, c.file_path, c.publisher, c.character, c.series,
                    c.issue_number, c.page_count, c.rating, c.is_favorite, c.in_reading_list,
-                   c.date_added, COALESCE(rp.current_page, 0) as progress,
+                   '' as tags, c.date_added, COALESCE(rp.current_page, 0) as progress,
                    c.writer, c.summary
             FROM run_items ri
             JOIN comics c ON ri.comic_id = c.id
@@ -503,63 +530,51 @@ final class DatabaseManager {
             WHERE ri.run_id = ?
             ORDER BY ri.position
         """
-        var out: [RunItem] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        sqlite3_bind_int64(stmt, 1, runId)
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let comic = Comic(
-                id:            sqlite3_column_int64(stmt, 4),
-                title:         colText(stmt, 5)  ?? "",
-                filePath:      colText(stmt, 6)  ?? "",
-                publisher:     colText(stmt, 7)  ?? "Unknown",
-                character:     colText(stmt, 8),
-                series:        colText(stmt, 9)  ?? "General",
-                issueNumber:   colText(stmt, 10),
-                pageCount:     Int(sqlite3_column_int(stmt, 11)),
-                progress:      Int(sqlite3_column_int(stmt, 16)),
-                rating:        Int(sqlite3_column_int(stmt, 12)),
-                isFavorite:    sqlite3_column_int(stmt, 13) != 0,
-                inReadingList: sqlite3_column_int(stmt, 14) != 0,
-                tags:          [],
-                dateAdded:     DatabaseManager.sqliteDateFormatter.date(from: colText(stmt, 15) ?? "") ?? Date(),
-                writer:        colText(stmt, 17),
-                summary:       colText(stmt, 18)
-            )
-            out.append(RunItem(
-                id:       sqlite3_column_int64(stmt, 0),
-                runId:    sqlite3_column_int64(stmt, 1),
-                comic:    comic,
-                position: Int(sqlite3_column_int(stmt, 2)),
-                notes:    colText(stmt, 3) ?? ""
-            ))
+        return queue.sync {
+            var out: [RunItem] = []
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            sqlite3_bind_int64(stmt, 1, runId)
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                out.append(RunItem(
+                    id:       sqlite3_column_int64(stmt, 0),
+                    runId:    sqlite3_column_int64(stmt, 1),
+                    comic:    mapComic(stmt: stmt, offset: 4),
+                    position: Int(sqlite3_column_int(stmt, 2)),
+                    notes:    colText(stmt, 3) ?? ""
+                ))
+            }
+            sqlite3_finalize(stmt)
+            return out
         }
-        sqlite3_finalize(stmt)
-        return out
     }
 
     @discardableResult
     func createRun(title: String, description: String = "") -> Int64? {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "INSERT INTO runs (title, description) VALUES (?, ?)",
-                                 -1, &stmt, nil) == SQLITE_OK else { return nil }
-        sqlite3_bind_text(stmt, 1, title,       -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt, 2, description, -1, SQLITE_TRANSIENT)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
-        let id = sqlite3_last_insert_rowid(db)
-        return id > 0 ? id : nil
+        queue.sync {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "INSERT INTO runs (title, description) VALUES (?, ?)",
+                                     -1, &stmt, nil) == SQLITE_OK else { return nil }
+            sqlite3_bind_text(stmt, 1, title,       -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, description, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+            let id = sqlite3_last_insert_rowid(db)
+            return id > 0 ? id : nil
+        }
     }
 
     func updateRun(_ id: Int64, title: String, description: String) {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "UPDATE runs SET title=?, description=? WHERE id=?",
-                                 -1, &stmt, nil) == SQLITE_OK else { return }
-        sqlite3_bind_text(stmt,  1, title,       -1, SQLITE_TRANSIENT)
-        sqlite3_bind_text(stmt,  2, description, -1, SQLITE_TRANSIENT)
-        sqlite3_bind_int64(stmt, 3, id)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
+        queue.sync {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "UPDATE runs SET title=?, description=? WHERE id=?",
+                                     -1, &stmt, nil) == SQLITE_OK else { return }
+            sqlite3_bind_text(stmt,  1, title,       -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt,  2, description, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int64(stmt, 3, id)
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
     }
 
     func deleteRun(_ id: Int64) {
@@ -567,18 +582,20 @@ final class DatabaseManager {
     }
 
     func addToRun(runId: Int64, comicId: Int64) {
-        var pos = 0
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(position), -1) + 1 FROM run_items WHERE run_id = ?",
-                              -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_int64(stmt, 1, runId)
-            if sqlite3_step(stmt) == SQLITE_ROW { pos = Int(sqlite3_column_int(stmt, 0)) }
-        }
-        sqlite3_finalize(stmt)
-        prepared("INSERT OR IGNORE INTO run_items (run_id, comic_id, position) VALUES (?, ?, ?)") {
-            sqlite3_bind_int64($0, 1, runId)
-            sqlite3_bind_int64($0, 2, comicId)
-            sqlite3_bind_int($0,  3, Int32(pos))
+        queue.sync {
+            var pos = 0
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, "SELECT COALESCE(MAX(position), -1) + 1 FROM run_items WHERE run_id = ?",
+                                  -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_int64(stmt, 1, runId)
+                if sqlite3_step(stmt) == SQLITE_ROW { pos = Int(sqlite3_column_int(stmt, 0)) }
+            }
+            sqlite3_finalize(stmt)
+            prepared_unsafe("INSERT OR IGNORE INTO run_items (run_id, comic_id, position) VALUES (?, ?, ?)") {
+                sqlite3_bind_int64($0, 1, runId)
+                sqlite3_bind_int64($0, 2, comicId)
+                sqlite3_bind_int($0,  3, Int32(pos))
+            }
         }
     }
 
@@ -589,34 +606,35 @@ final class DatabaseManager {
     }
 
     func reorderRunItems(runId: Int64, orderedItemIds: [Int64]) {
-        for (pos, itemId) in orderedItemIds.enumerated() {
-            prepared("UPDATE run_items SET position = ? WHERE id = ? AND run_id = ?") {
-                sqlite3_bind_int($0,  1, Int32(pos))
-                sqlite3_bind_int64($0, 2, itemId)
-                sqlite3_bind_int64($0, 3, runId)
+        queue.sync {
+            for (pos, itemId) in orderedItemIds.enumerated() {
+                prepared_unsafe("UPDATE run_items SET position = ? WHERE id = ? AND run_id = ?") {
+                    sqlite3_bind_int($0,  1, Int32(pos))
+                    sqlite3_bind_int64($0, 2, itemId)
+                    sqlite3_bind_int64($0, 3, runId)
+                }
             }
         }
     }
 
     func updateRunItemNotes(itemId: Int64, notes: String) {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "UPDATE run_items SET notes=? WHERE id=?",
-                                 -1, &stmt, nil) == SQLITE_OK else { return }
-        sqlite3_bind_text(stmt,  1, notes, -1, SQLITE_TRANSIENT)
-        sqlite3_bind_int64(stmt, 2, itemId)
-        sqlite3_step(stmt)
-        sqlite3_finalize(stmt)
+        prepared("UPDATE run_items SET notes=? WHERE id=?") {
+            sqlite3_bind_text($0,  1, notes, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int64($0, 2, itemId)
+        }
     }
 
     func isComicInRun(runId: Int64, comicId: Int64) -> Bool {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM run_items WHERE run_id=? AND comic_id=?",
-                                 -1, &stmt, nil) == SQLITE_OK else { return false }
-        sqlite3_bind_int64(stmt, 1, runId)
-        sqlite3_bind_int64(stmt, 2, comicId)
-        let result = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) > 0 : false
-        sqlite3_finalize(stmt)
-        return result
+        queue.sync {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM run_items WHERE run_id=? AND comic_id=?",
+                                     -1, &stmt, nil) == SQLITE_OK else { return false }
+            sqlite3_bind_int64(stmt, 1, runId)
+            sqlite3_bind_int64(stmt, 2, comicId)
+            let result = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) > 0 : false
+            sqlite3_finalize(stmt)
+            return result
+        }
     }
 
     // MARK: - Date parsing
@@ -629,23 +647,27 @@ final class DatabaseManager {
         return f
     }()
 
-    // MARK: - Public helpers for ad-hoc queries (used by StatsView)
+    // MARK: - Ad-hoc query helpers
 
     func scalarInt(_ sql: String) -> Int {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
-        let result = sqlite3_step(stmt) == SQLITE_ROW ? Int(sqlite3_column_int(stmt, 0)) : 0
-        sqlite3_finalize(stmt)
-        return result
+        queue.sync {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+            let result = sqlite3_step(stmt) == SQLITE_ROW ? Int(sqlite3_column_int(stmt, 0)) : 0
+            sqlite3_finalize(stmt)
+            return result
+        }
     }
 
     func rows<T>(_ sql: String, map: (OpaquePointer?) -> T) -> [T] {
-        var out: [T] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        while sqlite3_step(stmt) == SQLITE_ROW { out.append(map(stmt)) }
-        sqlite3_finalize(stmt)
-        return out
+        queue.sync {
+            var out: [T] = []
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            while sqlite3_step(stmt) == SQLITE_ROW { out.append(map(stmt)) }
+            sqlite3_finalize(stmt)
+            return out
+        }
     }
 
     func colText(_ stmt: OpaquePointer?, _ col: Int32) -> String? {
@@ -659,7 +681,8 @@ final class DatabaseManager {
         sqlite3_exec(db, sql, nil, nil, nil)
     }
 
-    private func prepared(_ sql: String, bind: (OpaquePointer?) -> Void) {
+    // Call only from within an existing queue.sync block (avoids re-entrant deadlock)
+    private func prepared_unsafe(_ sql: String, bind: (OpaquePointer?) -> Void) {
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
         bind(stmt)
@@ -667,59 +690,75 @@ final class DatabaseManager {
         sqlite3_finalize(stmt)
     }
 
+    private func prepared(_ sql: String, bind: (OpaquePointer?) -> Void) {
+        queue.sync { prepared_unsafe(sql, bind: bind) }
+    }
+
+    // Standard 16-column SELECT layout:
+    // (id, title, file_path, publisher, character, series, issue_number, page_count,
+    //  rating, is_favorite, in_reading_list, '' as tags, date_added, progress, writer, summary)
+    // offset=0 for queryComics; offset=4 for runItems (4 run_items columns precede)
+    private func mapComic(stmt: OpaquePointer?, offset: Int32) -> Comic {
+        let tagsStr = colText(stmt, offset + 11) ?? ""
+        let tags    = tagsStr.isEmpty ? [] : tagsStr.split(separator: ",").map(String.init)
+        return Comic(
+            id:            sqlite3_column_int64(stmt, offset + 0),
+            title:         colText(stmt, offset + 1)  ?? "",
+            filePath:      colText(stmt, offset + 2)  ?? "",
+            publisher:     colText(stmt, offset + 3)  ?? "Unknown",
+            character:     colText(stmt, offset + 4),
+            series:        colText(stmt, offset + 5)  ?? "General",
+            issueNumber:   colText(stmt, offset + 6),
+            pageCount:     Int(sqlite3_column_int(stmt, offset + 7)),
+            progress:      Int(sqlite3_column_int(stmt, offset + 13)),
+            rating:        Int(sqlite3_column_int(stmt, offset + 8)),
+            isFavorite:    sqlite3_column_int(stmt, offset + 9)  != 0,
+            inReadingList: sqlite3_column_int(stmt, offset + 10) != 0,
+            tags:          tags,
+            dateAdded:     DatabaseManager.sqliteDateFormatter.date(
+                               from: colText(stmt, offset + 12) ?? "") ?? Date(),
+            writer:        colText(stmt, offset + 14),
+            summary:       colText(stmt, offset + 15)
+        )
+    }
+
     private func queryComics(_ sql: String, args: [String]) -> [Comic] {
-        var out: [Comic] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        for (i, v) in args.enumerated() {
-            sqlite3_bind_text(stmt, Int32(i + 1), v, -1, SQLITE_TRANSIENT)
+        queue.sync {
+            var out: [Comic] = []
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            for (i, v) in args.enumerated() {
+                sqlite3_bind_text(stmt, Int32(i + 1), v, -1, SQLITE_TRANSIENT)
+            }
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                out.append(mapComic(stmt: stmt, offset: 0))
+            }
+            sqlite3_finalize(stmt)
+            return out
         }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let tagsStr = colText(stmt, 11) ?? ""
-            let tags = tagsStr.isEmpty ? [] : tagsStr.split(separator: ",").map(String.init)
-            out.append(Comic(
-                id:            sqlite3_column_int64(stmt, 0),
-                title:         colText(stmt, 1)  ?? "",
-                filePath:      colText(stmt, 2)  ?? "",
-                publisher:     colText(stmt, 3)  ?? "Unknown",
-                character:     colText(stmt, 4),
-                series:        colText(stmt, 5)  ?? "General",
-                issueNumber:   colText(stmt, 6),
-                pageCount:     Int(sqlite3_column_int(stmt, 7)),
-                progress:      Int(sqlite3_column_int(stmt, 13)),
-                rating:        Int(sqlite3_column_int(stmt, 8)),
-                isFavorite:    sqlite3_column_int(stmt, 9)  != 0,
-                inReadingList: sqlite3_column_int(stmt, 10) != 0,
-                tags:          tags,
-                dateAdded:     DatabaseManager.sqliteDateFormatter.date(from: colText(stmt, 12) ?? "") ?? Date(),
-                writer:        colText(stmt, 14),
-                summary:       colText(stmt, 15)
-            ))
-        }
-        sqlite3_finalize(stmt)
-        return out
     }
 
     private func queryGroups(_ sql: String, args: [String]) -> [SeriesGroup] {
-        var out: [SeriesGroup] = []
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        for (i, v) in args.enumerated() {
-            sqlite3_bind_text(stmt, Int32(i + 1), v, -1, SQLITE_TRANSIENT)
+        queue.sync {
+            var out: [SeriesGroup] = []
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            for (i, v) in args.enumerated() {
+                sqlite3_bind_text(stmt, Int32(i + 1), v, -1, SQLITE_TRANSIENT)
+            }
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                out.append(SeriesGroup(
+                    groupName:    colText(stmt, 1) ?? "",
+                    character:    colText(stmt, 2),
+                    publisher:    colText(stmt, 0) ?? "",
+                    coverComicId: sqlite3_column_int64(stmt, 4),
+                    issueCount:   Int(sqlite3_column_int(stmt, 3)),
+                    started:      Int(sqlite3_column_int(stmt, 5)),
+                    completed:    Int(sqlite3_column_int(stmt, 6))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            return out
         }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            out.append(SeriesGroup(
-                groupName:    colText(stmt, 1) ?? "",
-                character:    colText(stmt, 2),
-                publisher:    colText(stmt, 0) ?? "",
-                coverComicId: sqlite3_column_int64(stmt, 4),
-                issueCount:   Int(sqlite3_column_int(stmt, 3)),
-                started:      Int(sqlite3_column_int(stmt, 5)),
-                completed:    Int(sqlite3_column_int(stmt, 6))
-            ))
-        }
-        sqlite3_finalize(stmt)
-        return out
     }
-
 }

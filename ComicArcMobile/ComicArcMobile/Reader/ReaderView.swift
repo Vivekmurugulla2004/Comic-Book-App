@@ -96,7 +96,7 @@ struct ReaderView: View {
         }
         .onDisappear {
             stopAutoplay()
-            library.load()
+            library.refreshInProgress()
         }
         .sheet(isPresented: $showRatingSheet) {
             RatingSheet(comic: comic)
@@ -351,6 +351,8 @@ struct ReaderView: View {
                         ThumbnailPageCell(comic: comic, index: i, isCurrent: i == currentPage)
                             .id(i)
                             .onTapGesture { withAnimation { currentPage = i } }
+                            .accessibilityLabel("Page \(i + 1)")
+                            .accessibilityAddTraits(i == currentPage ? .isSelected : [])
                     }
                 }
                 .padding(.horizontal, 12)

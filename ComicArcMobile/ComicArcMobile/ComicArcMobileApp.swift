@@ -1,10 +1,8 @@
 import SwiftUI
 
-// #0b0c18 arcBg, #13152a arcSurface
-private let arcBgUIColor      = UIColor(red: 11/255,  green: 12/255,  blue: 24/255,  alpha: 1)
-private let arcSurfaceUIColor = UIColor(red: 19/255,  green: 21/255,  blue: 42/255,  alpha: 1)
-private let arcBorderUIColor  = UIColor(red: 45/255,  green: 49/255,  blue: 88/255,  alpha: 1)
-private let arcGoldUIColor    = UIColor(red: 247/255, green: 201/255, blue: 72/255,  alpha: 1)
+private let arcBgUIColor      = UIColor(Color.arcBg)
+private let arcSurfaceUIColor = UIColor(Color.arcSurface)
+private let arcGoldUIColor    = UIColor(Color.arcGold)
 
 @main
 struct ComicArcMobileApp: App {
@@ -15,7 +13,6 @@ struct ComicArcMobileApp: App {
     init() {
         PreferenceSync.shared.start()
 
-        // Tab bar
         let tab = UITabBarAppearance()
         tab.configureWithOpaqueBackground()
         tab.backgroundColor = arcSurfaceUIColor
@@ -24,7 +21,6 @@ struct ComicArcMobileApp: App {
         UITabBar.appearance().standardAppearance = tab
         UITabBar.appearance().scrollEdgeAppearance = tab
 
-        // Navigation bar
         let nav = UINavigationBarAppearance()
         nav.configureWithOpaqueBackground()
         nav.backgroundColor = arcSurfaceUIColor
@@ -34,10 +30,7 @@ struct ComicArcMobileApp: App {
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().compactAppearance = nav
 
-        // Table / List background
         UITableView.appearance().backgroundColor = arcBgUIColor
-
-        // Collection view (used by some grids)
         UICollectionView.appearance().backgroundColor = arcBgUIColor
     }
 

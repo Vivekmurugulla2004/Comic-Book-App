@@ -1,8 +1,6 @@
 import Foundation
 
-/// Mirrors the four reader/appearance preferences to iCloud Key-Value store.
-/// Pulls remote values on launch; pushes local changes when called.
-/// Gracefully no-ops if iCloud is unavailable or the capability is not configured.
+// Mirrors reader/appearance preferences to iCloud Key-Value store; no-ops if iCloud is unavailable.
 final class PreferenceSync {
     static let shared = PreferenceSync()
 
@@ -22,7 +20,6 @@ final class PreferenceSync {
         )
     }
 
-    /// Call after a local preference changes — pushes the current value to iCloud.
     func push(key: String) {
         guard keys.contains(key) else { return }
         kv.set(UserDefaults.standard.object(forKey: key), forKey: key)

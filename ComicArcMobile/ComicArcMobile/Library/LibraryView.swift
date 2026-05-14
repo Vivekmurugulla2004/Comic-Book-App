@@ -82,9 +82,17 @@ struct LibraryView: View {
             .navigationBarTitleDisplayMode(sizeClass == .regular ? .inline : .large)
             .searchable(text: $library.searchText, prompt: "Search comics")
             .onChange(of: library.searchText) { _, _ in
-                if isSearching { library.loadSearchResults() } else { library.load() }
                 if isSelecting { exitSelection() }
                 selectedSmartFilter = nil
+            }
+            .task(id: library.searchText) {
+                if library.searchText.isEmpty {
+                    library.load()
+                } else if isSearching {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    guard !Task.isCancelled else { return }
+                    library.loadSearchResults()
+                }
             }
             .onChange(of: browseMode) { _, _ in
                 selectedSmartFilter = nil
