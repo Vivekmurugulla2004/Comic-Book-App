@@ -36,6 +36,7 @@ def migrate_db():
                PRIMARY KEY (comic_id, tag_id)
            )""",
         "CREATE INDEX IF NOT EXISTS idx_comic_tags_comic ON comic_tags(comic_id)",
+        "ALTER TABLE comics ADD COLUMN character TEXT",
         "ALTER TABLE comics ADD COLUMN position INTEGER",
         """CREATE TABLE IF NOT EXISTS reading_list (
                comic_id INTEGER PRIMARY KEY REFERENCES comics(id) ON DELETE CASCADE,
@@ -60,6 +61,7 @@ def init_db():
             title TEXT NOT NULL,
             file_path TEXT UNIQUE NOT NULL,
             publisher TEXT,
+            character TEXT,
             series TEXT,
             issue_number TEXT,
             page_count INTEGER DEFAULT 0,
