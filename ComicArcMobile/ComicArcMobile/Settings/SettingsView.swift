@@ -294,8 +294,8 @@ struct SettingsView: View {
             .appendingPathComponent("Comics")
         try? FileManager.default.removeItem(at: comicsDir)
 
-        for comic in db.allComics() { db.deleteComic(comic.id) }
-        for run in db.allRuns()     { db.deleteRun(run.id) }
+        db.deleteAllComics()
+        db.deleteAllRuns()
 
         let coversDir = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

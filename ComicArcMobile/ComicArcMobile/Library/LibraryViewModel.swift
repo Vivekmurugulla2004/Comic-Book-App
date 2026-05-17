@@ -253,7 +253,7 @@ final class LibraryViewModel: ObservableObject {
 
     // MARK: - Private import helpers (nonisolated static — run off main thread)
 
-    private static var comicsDir: URL {
+    private nonisolated static var comicsDir: URL {
         FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Comics")
