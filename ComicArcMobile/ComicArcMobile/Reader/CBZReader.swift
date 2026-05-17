@@ -8,7 +8,7 @@ final class CBZReader: @unchecked Sendable {
     nonisolated var pageCount: Int { entries.count }
 
     nonisolated init(url: URL) throws {
-        let archive = try Archive(url: url, accessMode: .read)
+        let archive = try Archive(url: url, accessMode: .read, pathEncoding: nil)
         self.archive = archive
         self.entries = archive
             .filter { CBZReader.isImagePath($0.path) }

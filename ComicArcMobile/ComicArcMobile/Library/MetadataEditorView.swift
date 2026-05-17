@@ -64,19 +64,17 @@ struct MetadataEditorView: View {
     }
 
     private func save() {
+        let ws      = CharacterSet.whitespaces
+        let charVal = character.trimmingCharacters(in: ws)
+        let serVal  = series.trimmingCharacters(in: ws)
+        let numVal  = issueNumber.trimmingCharacters(in: ws)
         db.updateMetadata(
             comicId,
-            title:       title.trimmingCharacters(in: .whitespaces),
-            publisher:   publisher.trimmingCharacters(in: .whitespaces),
-            character:   character.trimmingCharacters(in: .whitespaces).isEmpty
-                         ? nil
-                         : character.trimmingCharacters(in: .whitespaces),
-            series:      series.trimmingCharacters(in: .whitespaces).isEmpty
-                         ? "General"
-                         : series.trimmingCharacters(in: .whitespaces),
-            issueNumber: issueNumber.trimmingCharacters(in: .whitespaces).isEmpty
-                         ? nil
-                         : issueNumber.trimmingCharacters(in: .whitespaces)
+            title:       title.trimmingCharacters(in: ws),
+            publisher:   publisher.trimmingCharacters(in: ws),
+            character:   charVal.isEmpty ? nil      : charVal,
+            series:      serVal.isEmpty  ? "General": serVal,
+            issueNumber: numVal.isEmpty  ? nil      : numVal
         )
 
         let tagNames = tagsText

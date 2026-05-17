@@ -565,21 +565,19 @@ final class DatabaseManager {
     }
 
     func updateRun(_ id: Int64, title: String, description: String) {
-        queue.sync {
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, "UPDATE runs SET title=?, description=? WHERE id=?",
-                                     -1, &stmt, nil) == SQLITE_OK else { return }
-            sqlite3_bind_text(stmt,  1, title,       -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt,  2, description, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_int64(stmt, 3, id)
-            sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
+        prepared("UPDATE runs SET title=?, description=? WHERE id=?") {
+            sqlite3_bind_text($0, 1, title,       -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text($0, 2, description, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int64($0, 3, id)
         }
     }
 
     func deleteRun(_ id: Int64) {
         prepared("DELETE FROM runs WHERE id = ?") { sqlite3_bind_int64($0, 1, id) }
     }
+
+    func deleteAllComics() { prepared("DELETE FROM comics")  { _ in } }
+    func deleteAllRuns()   { prepared("DELETE FROM runs")    { _ in } }
 
     func addToRun(runId: Int64, comicId: Int64) {
         queue.sync {
