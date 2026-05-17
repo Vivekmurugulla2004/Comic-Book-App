@@ -14,6 +14,10 @@
     <label for="title">Title</label>
     <input id="title" type="text" name="title" value="{{ comic.title }}" required autofocus>
 
+    <label for="character">Character <span class="optional">(optional)</span></label>
+    <input id="character" type="text" name="character" value="{{ comic.character or '' }}"
+           placeholder="e.g. Spider-Man, Batman">
+
     <label for="series">Series <span class="optional">(optional)</span></label>
     <input id="series" type="text" name="series" value="{{ comic.series if comic.series != 'General' else '' }}"
            placeholder="e.g. The Amazing Spider-Man">

@@ -368,6 +368,7 @@ def edit_comic(comic_id):
         abort(404)
     if request.method == 'POST':
         title     = request.form.get('title', '').strip()
+        character = request.form.get('character', '').strip()
         series    = request.form.get('series', '').strip()
         publisher = request.form.get('publisher', '').strip()
         issue_num = request.form.get('issue_number', '').strip()
@@ -375,8 +376,8 @@ def edit_comic(comic_id):
             db.close()
             return render_template('edit_comic.html', comic=comic, error='Title is required.')
         db.execute(
-            "UPDATE comics SET title=?, series=?, publisher=?, issue_number=? WHERE id=?",
-            (title, series or 'General', publisher or 'Unknown', issue_num or None, comic_id)
+            "UPDATE comics SET title=?, character=?, series=?, publisher=?, issue_number=? WHERE id=?",
+            (title, character or None, series or 'General', publisher or 'Unknown', issue_num or None, comic_id)
         )
         db.commit()
         db.close()
