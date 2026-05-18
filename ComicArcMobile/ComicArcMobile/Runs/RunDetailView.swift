@@ -9,7 +9,7 @@ struct RunDetailView: View {
     @State private var showEdit = false
     @State private var readerComic: Comic?
     @State private var readerRunContext: [Comic] = []
-    @State private var detailComicId: Int64?
+    @State private var detailComic: Comic?
     @State private var missingFileComic: Comic?
 
     private func openComic(_ comic: Comic, context: [Comic]) {
@@ -32,7 +32,7 @@ struct RunDetailView: View {
                     )
                 } else {
                     List {
-                        // Resume banner
+
                         if let firstUnfinished = items.first(where: { !$0.isFinished }) {
                             Section {
                                 Button {
@@ -61,7 +61,6 @@ struct RunDetailView: View {
                             }
                         }
 
-                        // Issues list
                         Section {
                             ForEach(items) { item in
                                 RunItemRow(item: item,
@@ -69,7 +68,7 @@ struct RunDetailView: View {
                                            onRead: { comic, context in
                                                openComic(comic, context: context)
                                            },
-                                           onDetail: { detailComicId = item.comic.id },
+                                           onDetail: { detailComic = item.comic },
                                            onNotesChanged: { notes in
                                                let itemId = item.id
                                                Task {
@@ -94,14 +93,14 @@ struct RunDetailView: View {
                             .onDelete { offsets in
                                 let runId = run.id
                                 let comicIds = offsets.map { items[$0].comic.id }
-                                items.remove(atOffsets: offsets)  // optimistic UI update
+                                items.remove(atOffsets: offsets)
                                 Task {
                                     await Task.detached(priority: .userInitiated) {
                                         for cid in comicIds {
                                             DatabaseManager.shared.removeFromRun(runId: runId, comicId: cid)
                                         }
                                     }.value
-                                    load()  // reconcile after DB confirms deletion
+                                    load()
                                 }
                             }
                         }
@@ -131,7 +130,7 @@ struct RunDetailView: View {
                     .environmentObject(library)
                     .onDisappear {
                         load()
-                        // Pick up auto-advance request set by ReaderView "Read Next" banner
+
                         if let pending = library.pendingRunComic {
                             library.pendingRunComic = nil
                             readerRunContext = items.map(\.comic)
@@ -139,13 +138,9 @@ struct RunDetailView: View {
                         }
                     }
             }
-            .sheet(item: Binding(
-                get: { detailComicId.map { ComicSheetID(id: $0) } },
-                set: { detailComicId = $0?.id }
-            )) { wrapper in
-                ComicDetailView(comicId: wrapper.id)
+            .sheet(item: $detailComic) { comic in
+                ComicDetailView(comic: comic)
                     .environmentObject(library)
-                    .onDisappear { load() }
             }
             .onAppear { load() }
             .alert("File Not Found", isPresented: Binding(
@@ -177,8 +172,6 @@ struct RunDetailView: View {
     }
 }
 
-// MARK: - Run Item Row
-
 struct RunItemRow: View {
     let item: RunItem
     let allComics: [Comic]
@@ -191,7 +184,7 @@ struct RunItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Position indicator / status
+
             ZStack {
                 Circle()
                     .fill(statusColor)
@@ -207,12 +200,10 @@ struct RunItemRow: View {
                 }
             }
 
-            // Cover thumbnail
             CoverImage(comic: item.comic)
                 .frame(width: 36, height: 52)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
-            // Info
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.comic.title)
                     .font(.subheadline)
@@ -235,7 +226,6 @@ struct RunItemRow: View {
 
             Spacer()
 
-            // Actions
             Menu {
                 Button {
                     onRead(item.comic, allComics)
@@ -273,5 +263,4 @@ struct RunItemRow: View {
         return Color.arcMuted
     }
 }
-
 

@@ -9,14 +9,15 @@ struct Comic: Identifiable, Hashable {
     var series: String
     var issueNumber: String?
     var pageCount: Int
-    var progress: Int       // 0-indexed current page
-    var rating: Int         // 0–5
+    var progress: Int
+    var rating: Int
     var isFavorite: Bool
     var inReadingList: Bool
     var tags: [String]
     var dateAdded: Date
     var writer: String?
     var summary: String?
+    var customCoverPath: String?
 
     var progressPercent: Double {
         guard pageCount > 0 else { return 0 }
@@ -24,7 +25,7 @@ struct Comic: Identifiable, Hashable {
     }
 
     var isFinished: Bool { pageCount > 0 && progress >= pageCount - 1 }
-    var isStarted: Bool   { progress > 0 }
+    var isStarted: Bool  { progress > 0 }
 
     var fileExtension: String {
         URL(fileURLWithPath: filePath).pathExtension.lowercased()
@@ -48,4 +49,17 @@ struct SeriesGroup: Identifiable {
     var isReading: Bool  { started > 0 && !isFinished }
 }
 
-struct ComicSheetID: Identifiable { let id: Int64 }
+struct Collection: Identifiable {
+    let id: Int64
+    var name: String
+    var comicCount: Int
+}
+
+struct FilterPreset: Identifiable {
+    let id: Int64
+    var name: String
+    var publisher: String?
+    var tag: String?
+    var smartFilter: String?
+    var sortOrder: String
+}

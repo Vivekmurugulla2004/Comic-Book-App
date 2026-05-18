@@ -12,14 +12,14 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - iPhone (tab bar)
-
     private var iPhoneLayout: some View {
         TabView {
             LibraryView()
                 .tabItem { Label("Library",     systemImage: "books.vertical") }
             RunsView()
                 .tabItem { Label("Runs",        systemImage: "list.number") }
+            CollectionsView()
+                .tabItem { Label("Collections", systemImage: "folder") }
             FavoritesView()
                 .tabItem { Label("Favorites",   systemImage: "heart") }
             ReadingListView()
@@ -31,9 +31,8 @@ struct ContentView: View {
         }
         .tint(.arcGold)
         .background(Color.arcBg.ignoresSafeArea())
+        .onAppear { library.loadCollections() }
     }
-
-    // MARK: - iPad (sidebar)
 
     @State private var iPadSelection: SidebarTab? = .library
 
@@ -49,28 +48,29 @@ struct ContentView: View {
             .listStyle(.sidebar)
         } detail: {
             switch iPadSelection ?? .library {
-            case .library:     LibraryView()
-            case .runs:        RunsView()
-            case .favorites:   FavoritesView()
-            case .readingList: ReadingListView()
-            case .stats:       StatsView()
-            case .settings:    SettingsView()
+            case .library:      LibraryView()
+            case .runs:         RunsView()
+            case .collections:  CollectionsView()
+            case .favorites:    FavoritesView()
+            case .readingList:  ReadingListView()
+            case .stats:        StatsView()
+            case .settings:     SettingsView()
             }
         }
         .tint(.arcGold)
+        .onAppear { library.loadCollections() }
     }
 }
 
-// MARK: - Sidebar tabs
-
 enum SidebarTab: String, CaseIterable, Identifiable, Hashable {
-    case library, runs, favorites, readingList, stats, settings
+    case library, runs, collections, favorites, readingList, stats, settings
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .library:     return "Library"
         case .runs:        return "Reading Runs"
+        case .collections: return "Collections"
         case .favorites:   return "Favorites"
         case .readingList: return "Want to Read"
         case .stats:       return "Stats"
@@ -82,6 +82,7 @@ enum SidebarTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .library:     return "books.vertical"
         case .runs:        return "list.number"
+        case .collections: return "folder"
         case .favorites:   return "heart"
         case .readingList: return "bookmark"
         case .stats:       return "chart.bar"
