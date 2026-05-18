@@ -5,41 +5,26 @@ struct ComicCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Cover — full-bleed, clipped by parent arcCard cornerRadius at the top.
-            // Matches macOS .comic-card layout: cover fills card, info section below.
             ZStack(alignment: .topTrailing) {
                 CoverImage(comic: comic)
                     .aspectRatio(2/3, contentMode: .fill)
                     .clipped()
 
-                // Status badge (top-right): finished > favorite
-                VStack(spacing: 4) {
-                    if comic.isFinished {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .padding(5)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .padding(4)
-                    } else if comic.isFavorite {
-                        Image(systemName: "heart.fill")
-                            .foregroundStyle(Color.arcRed)
-                            .padding(5)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .padding(4)
-                    }
+                if comic.isFinished {
+                    CardBadge(systemImage: "checkmark.circle.fill", color: .green).padding(6)
+                } else if comic.isFavorite {
+                    CardBadge(systemImage: "heart.fill", color: Color.arcRed).padding(6)
                 }
             }
-            // Progress bar sits at bottom of cover area
             .overlay(alignment: .bottom) {
                 if comic.pageCount > 0 && comic.progress > 0 {
-                    Rectangle()
-                        .fill(comic.isFinished ? Color.green : Color.arcGold)
-                        .frame(height: 3)
-                        .scaleEffect(x: min(1, comic.progressPercent), y: 1, anchor: .leading)
+                    ArcProgressBar(
+                        value: comic.progressPercent,
+                        color: comic.isFinished ? .green : .arcGold
+                    )
                 }
             }
 
-            // Info section — matches macOS .card-info padding
             VStack(alignment: .leading, spacing: 4) {
                 Text(comic.title)
                     .font(.caption).fontWeight(.medium)

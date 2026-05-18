@@ -117,35 +117,26 @@ struct ReaderView: View {
     private var toolbar: some View {
         Group {
             if isLandscapePhone {
-                landscapeToolbar
+                HStack {
+                    toolbarContent
+                    if comic.pageCount > 0 {
+                        pageSlider.frame(maxWidth: 200)
+                    }
+                }
+                .padding(.horizontal)
+                .frame(maxHeight: .infinity, alignment: .top)
             } else {
-                portraitToolbar
+                VStack {
+                    toolbarContent
+                    Spacer()
+                    pageSlider
+                }
             }
         }
         .transition(.opacity)
     }
 
-    private var portraitToolbar: some View {
-        VStack {
-            toolbarRow
-            Spacer()
-            pageSlider
-        }
-    }
-
-    private var landscapeToolbar: some View {
-        HStack {
-            toolbarRow
-            if comic.pageCount > 0 {
-                pageSlider
-                    .frame(maxWidth: 200)
-            }
-        }
-        .padding(.horizontal)
-        .frame(maxHeight: .infinity, alignment: .top)
-    }
-
-    private var toolbarRow: some View {
+    private var toolbarContent: some View {
         HStack {
             Button { dismiss() } label: {
                 Image(systemName: "xmark")

@@ -26,8 +26,7 @@ struct LibraryView: View {
     // Smart filters
     @State private var selectedSmartFilter: SmartFilter? = nil
 
-    // Cached filtered comics — updated via onChange instead of recomputed on every body pass
-    @State private var filteredComics: [Comic] = []
+    // filteredComics is derived directly — no @State mirror needed
 
     // Continue Run
     @State private var activeRun: Run?
@@ -45,11 +44,11 @@ struct LibraryView: View {
     }
 
     private var phoneColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 130), spacing: 12)]
+        [GridItem(.adaptive(minimum: 130), spacing: .arcS12)]
     }
 
     private var ipadColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 180), spacing: 16)]
+        [GridItem(.adaptive(minimum: 180), spacing: .arcS16)]
     }
 
     private var columns: [GridItem] {
@@ -59,18 +58,18 @@ struct LibraryView: View {
     // True when user is actively searching — bypass the hierarchy
     private var isSearching: Bool { !searchText.isEmpty }
 
-    private func updateFilteredComics(_ comics: [Comic]) {
-        guard let filter = selectedSmartFilter else { filteredComics = comics; return }
+    private var filteredComics: [Comic] {
+        guard let filter = selectedSmartFilter else { return library.comics }
         switch filter {
         case .recentlyAdded:
             let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-            filteredComics = comics.filter { $0.dateAdded >= cutoff }
+            return library.comics.filter { $0.dateAdded >= cutoff }
         case .inProgress:
-            filteredComics = comics.filter { $0.isStarted && !$0.isFinished }
+            return library.comics.filter { $0.isStarted && !$0.isFinished }
         case .unread:
-            filteredComics = comics.filter { !$0.isStarted }
+            return library.comics.filter { !$0.isStarted }
         case .finished:
-            filteredComics = comics.filter { $0.isFinished }
+            return library.comics.filter { $0.isFinished }
         }
     }
 
@@ -91,7 +90,6 @@ struct LibraryView: View {
             .onChange(of: searchText) { _, _ in
                 if isSelecting { exitSelection() }
                 selectedSmartFilter = nil
-                updateFilteredComics(library.comics)
             }
             .task(id: searchText) {
                 if !searchText.isEmpty {
@@ -126,9 +124,7 @@ struct LibraryView: View {
                     library.importFolder(url)
                 }
             }
-            .onAppear { reload(); loadActiveRun(); updateFilteredComics(library.comics) }
-            .onChange(of: library.comics) { _, newComics in updateFilteredComics(newComics) }
-            .onChange(of: selectedSmartFilter) { _, _ in updateFilteredComics(library.comics) }
+            .onAppear { reload(); loadActiveRun() }
             .sheet(item: $detailComic) { comic in
                 ComicDetailView(comic: comic)
                     .environmentObject(library)
@@ -333,11 +329,13 @@ struct LibraryView: View {
                 EmptyStateView(
                     icon: "books.vertical",
                     title: "No Issues",
-                    message: "No issues match the current filter."
+                    message: selectedSmartFilter != nil
+                        ? "No issues match the \"\(selectedSmartFilter!.rawValue)\" filter."
+                        : "No issues found for this series."
                 )
                 .padding(.top, 40)
             } else {
-                LazyVGrid(columns: ipadColumns, spacing: 16) {
+                LazyVGrid(columns: ipadColumns, spacing: .arcS16) {
                     ForEach(filteredComics) { comic in
                         selectableComicCard(comic)
                     }
@@ -624,7 +622,7 @@ struct LibraryView: View {
     }
 
     private func issueGrid(series: SeriesGroup) -> some View {
-        LazyVGrid(columns: columns, spacing: 16) {
+        LazyVGrid(columns: columns, spacing: .arcS16) {
             ForEach(filteredComics) { comic in
                 selectableComicCard(comic)
             }
@@ -635,38 +633,54 @@ struct LibraryView: View {
     private var flatGrid: some View {
         Group {
             if filteredComics.isEmpty {
-                if searchText.isEmpty && selectedSmartFilter == nil {
-                    EmptyStateView(
-                        icon: "books.vertical",
-                        title: "No Comics Yet",
-                        message: "Tap + to import CBZ or PDF files, or import an entire folder at once.",
-                        actionTitle: "Import Comics",
-                        action: { showImporter = true }
-                    )
-                    .padding(.top, 60)
-                } else if let filter = selectedSmartFilter {
-                    EmptyStateView(
-                        icon: "line.3.horizontal.decrease",
-                        title: "No \(filter.rawValue) Comics",
-                        message: "No comics match this filter right now."
-                    )
-                    .padding(.top, 60)
-                } else {
-                    EmptyStateView(
-                        icon: "magnifyingglass",
-                        title: "No Results",
-                        message: "Nothing matched \"\(searchText)\". Try a different title or series."
-                    )
-                    .padding(.top, 60)
-                }
+                contextAwareEmptyState.padding(.top, 60)
             } else {
-                LazyVGrid(columns: columns, spacing: 16) {
+                LazyVGrid(columns: columns, spacing: .arcS16) {
                     ForEach(filteredComics) { comic in
                         selectableComicCard(comic)
                     }
                 }
                 .padding(.top, 8)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var contextAwareEmptyState: some View {
+        if !searchText.isEmpty {
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: "No Results for \"\(searchText)\"",
+                message: "Try searching by title or series name."
+            )
+        } else if let filter = selectedSmartFilter {
+            switch filter {
+            case .recentlyAdded:
+                EmptyStateView(icon: "clock", title: "Nothing Added Recently",
+                               message: "Comics added in the last 30 days will appear here.")
+            case .inProgress:
+                EmptyStateView(icon: "book.fill", title: "Nothing In Progress",
+                               message: "Open any comic to start reading — it'll appear here.")
+            case .unread:
+                EmptyStateView(icon: "checkmark.circle", title: "No Unread Comics",
+                               message: "Everything's been started. Nice work.")
+            case .finished:
+                EmptyStateView(icon: "trophy", title: "No Finished Comics Yet",
+                               message: "Read to the last page of any comic to see it here.")
+            }
+        } else if let tag = selectedTag {
+            EmptyStateView(icon: "tag", title: "No Comics Tagged \"\(tag)\"",
+                           message: "Open a comic's detail page to add tags.")
+        } else if selectedPublisher != "All" {
+            EmptyStateView(icon: "books.vertical", title: "No Comics from \(selectedPublisher)",
+                           message: "Import comics or check your publisher filter.")
+        } else {
+            EmptyStateView(
+                icon: "books.vertical", title: "No Comics Yet",
+                message: "Tap + to import CBZ, CBR, or PDF files — or import an entire folder.",
+                actionTitle: "Import Comics",
+                action: { showImporter = true }
+            )
         }
     }
 

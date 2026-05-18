@@ -9,7 +9,7 @@ struct RunDetailView: View {
     @State private var showEdit = false
     @State private var readerComic: Comic?
     @State private var readerRunContext: [Comic] = []
-    @State private var detailComicId: Int64?
+    @State private var detailComic: Comic?
     @State private var missingFileComic: Comic?
 
     private func openComic(_ comic: Comic, context: [Comic]) {
@@ -69,7 +69,7 @@ struct RunDetailView: View {
                                            onRead: { comic, context in
                                                openComic(comic, context: context)
                                            },
-                                           onDetail: { detailComicId = item.comic.id },
+                                           onDetail: { detailComic = item.comic },
                                            onNotesChanged: { notes in
                                                let itemId = item.id
                                                Task {
@@ -139,13 +139,9 @@ struct RunDetailView: View {
                         }
                     }
             }
-            .sheet(item: Binding(
-                get: { detailComicId.map { ComicSheetID(id: $0) } },
-                set: { detailComicId = $0?.id }
-            )) { wrapper in
-                ComicDetailView(comicId: wrapper.id)
+            .sheet(item: $detailComic) { comic in
+                ComicDetailView(comic: comic)
                     .environmentObject(library)
-                    .onDisappear { load() }
             }
             .onAppear { load() }
             .alert("File Not Found", isPresented: Binding(

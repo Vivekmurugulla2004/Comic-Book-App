@@ -1,41 +1,62 @@
 import SwiftUI
 
-// MARK: - ComicArc Design System
-// Matches the macOS app's CSS color palette
+// MARK: - Color Palette
 
 extension Color {
-    // Core palette
-    static let arcGold    = Color(red: 247/255, green: 201/255, blue: 72/255)   // #f7c948
-    static let arcRed     = Color(red: 239/255, green: 35/255,  blue: 60/255)   // #ef233c
-    static let arcBg      = Color(red: 11/255,  green: 12/255,  blue: 24/255)   // #0b0c18
-    static let arcSurface = Color(red: 19/255,  green: 21/255,  blue: 42/255)   // #13152a
-    static let arcCard    = Color(red: 26/255,  green: 29/255,  blue: 53/255)   // #1a1d35
-    static let arcBorder  = Color(red: 45/255,  green: 49/255,  blue: 88/255)   // #2d3158
-    static let arcMuted   = Color(red: 122/255, green: 122/255, blue: 154/255)  // #7a7a9a
-    static let arcBlue    = Color(red: 37/255,  green: 99/255,  blue: 235/255)  // #2563eb — matches macOS reading badge
+    static let arcGold    = Color(red: 247/255, green: 201/255, blue: 72/255)
+    static let arcRed     = Color(red: 239/255, green: 35/255,  blue: 60/255)
+    static let arcBg      = Color(red: 11/255,  green: 12/255,  blue: 24/255)
+    static let arcSurface = Color(red: 19/255,  green: 21/255,  blue: 42/255)
+    static let arcCard    = Color(red: 26/255,  green: 29/255,  blue: 53/255)
+    static let arcBorder  = Color(red: 45/255,  green: 49/255,  blue: 88/255)
+    static let arcMuted   = Color(red: 122/255, green: 122/255, blue: 154/255)
+    static let arcBlue    = Color(red: 37/255,  green: 99/255,  blue: 235/255)
 
-    // Publisher badge colors
-    static let pubMarvel  = Color(red: 0.8, green: 0,    blue: 0)
-    static let pubDC      = Color(red: 0.1, green: 0.23, blue: 0.54)
-    static let pubImage   = Color(red: 0.7, green: 0.28, blue: 0)
+    static let pubMarvel  = Color(red: 0.8,  green: 0,    blue: 0)
+    static let pubDC      = Color(red: 0.1,  green: 0.23, blue: 0.54)
+    static let pubImage   = Color(red: 0.7,  green: 0.28, blue: 0)
     static let pubManga   = Color(red: 0.42, green: 0.05, blue: 0.68)
-    static let pubIndie   = Color(red: 0.1, green: 0.42, blue: 0.23)
+    static let pubIndie   = Color(red: 0.1,  green: 0.42, blue: 0.23)
 }
 
 // MARK: - Design Tokens
 
 extension CGFloat {
-    /// Matches macOS CSS `--radius: 12px`
     static let arcCardRadius: CGFloat  = 12
-    /// Inner elements (cover images within cards)
     static let arcInnerRadius: CGFloat = 8
-    /// Publisher/status badge corner radius — matches macOS `border-radius: 4px`
     static let arcBadgeRadius: CGFloat = 4
+
+    // Spacing scale
+    static let arcS2:  CGFloat = 2
+    static let arcS4:  CGFloat = 4
+    static let arcS6:  CGFloat = 6
+    static let arcS8:  CGFloat = 8
+    static let arcS10: CGFloat = 10
+    static let arcS12: CGFloat = 12
+    static let arcS16: CGFloat = 16
+    static let arcS20: CGFloat = 20
+    static let arcS24: CGFloat = 24
+    static let arcS32: CGFloat = 32
 }
 
-// MARK: - Arc Card Style Modifier
-// Consolidates the repeating pattern: arcCard background + clip + 1pt border.
-// Matches macOS `.comic-card` / `.series-card` styling.
+extension Animation {
+    static let arcSnappy = Animation.easeInOut(duration: 0.2)
+    static let arcFast   = Animation.easeInOut(duration: 0.15)
+    static let arcSpring = Animation.spring(response: 0.3, dampingFraction: 0.8)
+}
+
+// MARK: - AppStorage Keys
+
+enum AppStorageKey {
+    static let onboardingDone    = "onboardingDone"
+    static let appColorScheme    = "appColorScheme"
+    static let defaultReadMode   = "defaultReadMode"
+    static let rtlMode           = "rtlMode"
+    static let autoplayInterval  = "autoplayInterval"
+    static let iCloudSync        = "iCloudSync"
+}
+
+// MARK: - Arc Card Modifier
 
 private struct ArcCardModifier: ViewModifier {
     let cornerRadius: CGFloat
@@ -43,10 +64,8 @@ private struct ArcCardModifier: ViewModifier {
         content
             .background(Color.arcCard)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.arcBorder, lineWidth: 1)
-            )
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(Color.arcBorder, lineWidth: 1))
             .shadow(color: .black.opacity(0.28), radius: 4, x: 0, y: 2)
     }
 }
@@ -58,22 +77,55 @@ extension View {
 }
 
 // MARK: - Card Button Style
-// Press feedback for tappable cards: subtle scale + brightness lift matches macOS hover feel.
 
 struct ArcCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .brightness(configuration.isPressed ? 0.04 : 0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.arcFast, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Progress Bar
+// Single shared implementation used everywhere: ComicCard, ContinueCard, SeriesCard, RunDetailView.
+
+struct ArcProgressBar: View {
+    let value: Double   // 0.0–1.0
+    var height: CGFloat = 3
+    var color: Color = .arcGold
+
+    var body: some View {
+        GeometryReader { geo in
+            Capsule()
+                .fill(Color.arcBorder)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * min(1, max(0, value)))
+                }
+        }
+        .frame(height: height)
+    }
+}
+
+// MARK: - Card Badge
+// Status indicators on cover images (finished checkmark, favorite heart, reading badge).
+
+struct CardBadge: View {
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.caption)
+            .foregroundStyle(color)
+            .padding(5)
+            .background(.ultraThinMaterial, in: Circle())
     }
 }
 
 // MARK: - Filter Chip
-// Single component for all horizontal filter bars (publisher, tag, smart filter).
-// Two visual styles mirror the macOS tab hierarchy:
-//   .filled  — primary filter (publisher/tag): solid gold when active, matches `.tab.active`
-//   .outlined — secondary filter (smart filters): gold-tinted outline when active
 
 struct FilterChip: View {
     enum Style { case filled, outlined }
@@ -87,7 +139,7 @@ struct FilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(.caption.bold())
-                .padding(.horizontal, 12).padding(.vertical, 6)
+                .padding(.horizontal, .arcS12).padding(.vertical, .arcS6)
                 .background(chipBackground)
                 .foregroundStyle(chipForeground)
                 .clipShape(Capsule())
@@ -106,22 +158,22 @@ struct FilterChip: View {
 
     private var chipForeground: Color {
         switch (style, isActive) {
-        case (.filled, true):   return .arcBg         // matches macOS: #0b0c18 on gold
+        case (.filled, true): return .arcBg
         case (.outlined, true): return .arcGold
-        default:                return Color.primary
+        default: return Color.primary
         }
     }
 
     private var chipBorder: Color {
         switch (style, isActive) {
-        case (.filled, true):   return .clear
+        case (.filled, true): return .clear
         case (.outlined, true): return .arcGold
-        default:                return .arcBorder
+        default: return .arcBorder
         }
     }
 }
 
-// MARK: - Empty state
+// MARK: - Empty State
 
 struct EmptyStateView: View {
     let icon: String
@@ -131,7 +183,7 @@ struct EmptyStateView: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: .arcS16) {
             Image(systemName: icon)
                 .font(.system(size: 52))
                 .foregroundStyle(Color.arcMuted)
@@ -142,17 +194,17 @@ struct EmptyStateView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color.arcMuted)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, .arcS32)
             if let actionTitle, let action {
                 Button(action: action) {
                     Text(actionTitle)
                         .font(.headline)
-                        .padding(.horizontal, 28).padding(.vertical, 12)
+                        .padding(.horizontal, 28).padding(.vertical, .arcS12)
                         .background(Color.arcGold)
                         .foregroundStyle(Color.arcBg)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .padding(.top, 4)
+                .padding(.top, .arcS4)
                 .accessibilityLabel(actionTitle)
             }
         }
@@ -162,8 +214,7 @@ struct EmptyStateView: View {
 }
 
 // MARK: - Comic Collection View
-// Shared component for Favorites and Reading List — both are identical grids
-// differing only in title, empty state text, and DB query.
+// Shared template for Favorites and Reading List tabs.
 
 struct ComicCollectionView: View {
     @EnvironmentObject var library: LibraryViewModel
@@ -179,7 +230,7 @@ struct ComicCollectionView: View {
     @State private var detailComic: Comic?
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 140), spacing: 12)]
+        [GridItem(.adaptive(minimum: sizeClass == .regular ? 160 : 140), spacing: .arcS12)]
     }
 
     var body: some View {
@@ -189,13 +240,13 @@ struct ComicCollectionView: View {
                     EmptyStateView(icon: emptyIcon, title: emptyTitle, message: emptyMessage)
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 16) {
+                        LazyVGrid(columns: columns, spacing: .arcS16) {
                             ForEach(comics) { comic in
                                 ComicCard(comic: comic)
                                     .onTapGesture { detailComic = comic }
                             }
                         }
-                        .padding()
+                        .padding(.arcS16)
                     }
                 }
             }
@@ -218,7 +269,7 @@ struct ComicCollectionView: View {
     }
 }
 
-// MARK: - Publisher badge helper
+// MARK: - Publisher Badge
 
 struct PublisherBadge: View {
     let publisher: String
@@ -226,7 +277,7 @@ struct PublisherBadge: View {
     var body: some View {
         Text(publisher.uppercased())
             .font(.system(size: 9, weight: .bold))
-            .padding(.horizontal, 6)
+            .padding(.horizontal, .arcS6)
             .padding(.vertical, 2)
             .background(badgeColor)
             .foregroundStyle(.white)
@@ -235,9 +286,9 @@ struct PublisherBadge: View {
 
     private var badgeColor: Color {
         let p = publisher.lowercased()
-        if p.contains("marvel")      { return .pubMarvel }
-        if p.contains("dc")          { return .pubDC }
-        if p.contains("image")       { return .pubImage }
+        if p.contains("marvel")  { return .pubMarvel }
+        if p.contains("dc")      { return .pubDC }
+        if p.contains("image")   { return .pubImage }
         if p.contains("manga") || p.contains("viz") || p.contains("shonen") { return .pubManga }
         if p.contains("dark horse") || p.contains("idw") || p.contains("boom") { return .pubIndie }
         return .arcMuted

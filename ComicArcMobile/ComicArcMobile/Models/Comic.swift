@@ -17,6 +17,7 @@ struct Comic: Identifiable, Hashable {
     var dateAdded: Date
     var writer: String?
     var summary: String?
+    var customCoverPath: String?  // user-set thumbnail override
 
     var progressPercent: Double {
         guard pageCount > 0 else { return 0 }
@@ -24,7 +25,7 @@ struct Comic: Identifiable, Hashable {
     }
 
     var isFinished: Bool { pageCount > 0 && progress >= pageCount - 1 }
-    var isStarted: Bool   { progress > 0 }
+    var isStarted: Bool  { progress > 0 }
 
     var fileExtension: String {
         URL(fileURLWithPath: filePath).pathExtension.lowercased()
@@ -48,4 +49,21 @@ struct SeriesGroup: Identifiable {
     var isReading: Bool  { started > 0 && !isFinished }
 }
 
-struct ComicSheetID: Identifiable { let id: Int64 }
+// MARK: - Collections
+
+struct Collection: Identifiable {
+    let id: Int64
+    var name: String
+    var comicCount: Int
+}
+
+// MARK: - Filter Presets
+
+struct FilterPreset: Identifiable {
+    let id: Int64
+    var name: String
+    var publisher: String?
+    var tag: String?
+    var smartFilter: String?
+    var sortOrder: String
+}
